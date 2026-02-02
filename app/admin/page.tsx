@@ -81,7 +81,12 @@ export default function AdminDashboard() {
           >
             💰 Historial
           </Link>
-          
+          <Link 
+            href="/admin/cocina" 
+            className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
+          >
+            🍳 Cocina
+          </Link>
           <button 
             onClick={cargarDatos}
             className="bg-white border border-slate-300 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-transform font-bold text-slate-600"
