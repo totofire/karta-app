@@ -1,0 +1,70 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db" 
+}
+
+// --- TUS MODELOS (Iguales que antes) ---
+
+model Mesa {
+  id        Int      @id @default(autoincrement())
+  nombre    String   
+  qr_token  String   @unique 
+  sesiones  Sesion[]
+}
+
+model Sesion {
+  id           Int       @id @default(autoincrement())
+  mesaId       Int
+  mesa         Mesa      @relation(fields: [mesaId], references: [id])
+  fechaInicio  DateTime  @default(now())
+  fechaFin     DateTime?
+  totalVenta   Float     @default(0)
+  pedidos      Pedido[]
+}
+
+model Categoria {
+  id        Int        @id @default(autoincrement())
+  nombre    String     
+  orden     Int        @default(0) 
+  productos Producto[]
+}
+
+model Producto {
+  id          Int          @id @default(autoincrement())
+  nombre      String       
+  descripcion String?      
+  precio      Float
+  imagen      String?      
+  activo      Boolean      @default(true) 
+  orden       Int          @default(0)    
+  categoriaId Int
+  categoria   Categoria    @relation(fields: [categoriaId], references: [id])
+  items       ItemPedido[]
+}
+
+model Pedido {
+  id            Int          @id @default(autoincrement())
+  sesionId      Int
+  sesion        Sesion       @relation(fields: [sesionId], references: [id])
+  nombreCliente String?
+  estado        String       @default("PENDIENTE") 
+  fecha         DateTime     @default(now())
+  items         ItemPedido[]
+}
+
+model ItemPedido {
+  id            Int      @id @default(autoincrement())
+  pedidoId      Int
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id])
+  productoId    Int
+  producto      Producto @relation(fields: [productoId], references: [id])
+  cantidad      Int
+  precio        Float    
+  observaciones String?  
+}
