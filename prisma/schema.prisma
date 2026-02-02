@@ -14,8 +14,9 @@ datasource db {
 
 model Mesa {
   id        Int      @id @default(autoincrement())
-  nombre    String   
-  qr_token  String   @unique 
+  nombre    String
+  qr_token  String   @unique
+  activo    Boolean  @default(true) 
   sesiones  Sesion[]
 }
 
