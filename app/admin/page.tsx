@@ -81,10 +81,14 @@ export default function AdminDashboard() {
           >
             💰 Historial
           </Link>
+          <Link href="/admin/qr" className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm active:scale-95 text-sm">
+      📱 QRs Mesas
+    </Link>
           <Link 
             href="/admin/cocina" 
             className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
           >
+            
             🍳 Cocina
           </Link>
           <button 
