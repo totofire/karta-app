@@ -69,3 +69,11 @@ model ItemPedido {
   precio        Float    
   observaciones String?  
 }
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  email     String   @unique
+  password  String   // En un caso real esto se encripta, para MVP lo usaremos directo
+  rol       String   @default("ADMIN") // ADMIN, COCINA, MOZO
+  fechaAlta DateTime @default(now())
+}

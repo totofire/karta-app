@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 
-// VOLVEMOS A LO SIMPLE:
 const prisma = new PrismaClient()
+
 async function main() {
   // Limpiar datos existentes (opcional)
   await prisma.itemPedido.deleteMany()
@@ -10,6 +10,7 @@ async function main() {
   await prisma.mesa.deleteMany()
   await prisma.producto.deleteMany()
   await prisma.categoria.deleteMany()
+  await prisma.usuario.deleteMany()
 
   // Crear categorías
   const cervezas = await prisma.categoria.create({
@@ -114,6 +115,20 @@ async function main() {
       },
     ],
   })
+
+  // Crear usuario admin
+  const admin = await prisma.usuario.upsert({
+    where: { email: 'admin@karta.com' },
+    update: {},
+    create: {
+      nombre: 'Dueño',
+      email: 'admin@karta.com',
+      password: '123', // Contraseña maestra
+      rol: 'ADMIN'
+    },
+  })
+  
+  console.log('👤 Usuario Admin creado:', admin.email)
 
   // Crear mesas
   await prisma.mesa.createMany({
