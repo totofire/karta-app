@@ -91,6 +91,9 @@ export default function AdminDashboard() {
             
             🍳 Cocina
           </Link>
+          <Link href="/admin/categorias" className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm active:scale-95 text-sm">
+  📑 Categorías
+</Link>
           <button 
             onClick={cargarDatos}
             className="bg-white border border-slate-300 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-transform font-bold text-slate-600"
