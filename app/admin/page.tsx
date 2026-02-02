@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link"; // Importante para navegar a Productos e Historial
-
+import { useRouter } from "next/navigation"; // <--- AGREGAR ESTO
 export default function AdminDashboard() {
   const [mesas, setMesas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
-
+  const router = useRouter();
   // Función para traer los datos del estado actual
   const cargarDatos = async () => {
     try {
@@ -25,7 +25,10 @@ export default function AdminDashboard() {
     const intervalo = setInterval(cargarDatos, 10000);
     return () => clearInterval(intervalo);
   }, []);
-
+  const cerrarSesion = async () => {
+      await fetch("/api/logout", { method: "POST" });
+      router.push("/login"); // Nos manda al login
+    };
   // Función para cobrar y cerrar mesa
   const cerrarMesa = async (sesionId: number, nombre: string, total: number) => {
     const confirmacion = window.confirm(`¿Cerrar mesa ${nombre}?\n\n💰 TOTAL A COBRAR: $${total}`);
@@ -84,6 +87,12 @@ export default function AdminDashboard() {
             className="bg-white border border-slate-300 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-transform font-bold text-slate-600"
           >
             🔄
+          </button>
+          <button 
+            onClick={cerrarSesion}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
+          >
+            🚪 Cerrar Sesión
           </button>
         </div>
       </header>
