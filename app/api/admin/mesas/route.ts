@@ -4,90 +4,102 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 export const dynamic = 'force-dynamic';
 
-// GET: Solo trae las activas
 export async function GET() {
+  // 1. Buscamos las mesas (sin ordenar por ID)
   const mesas = await prisma.mesa.findMany({
     where: { activo: true },
-    orderBy: { id: 'asc' }
   });
+
+  // 2. Aplicamos "Ordenamiento Natural" con Javascript antes de enviar
+  // Esto hace que "Mesa 2" se ponga antes que "Mesa 10" automáticamente
+  mesas.sort((a, b) => 
+    a.nombre.localeCompare(b.nombre, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
   return NextResponse.json(mesas);
 }
 
-// Función para garantizar que el QR sea único (token-1, token-2, etc.)
-async function generarTokenUnico(baseToken: string) {
+// Función auxiliar para token único (La sacamos afuera para reusar)
+async function getUniqueToken(baseToken: string) {
   let token = baseToken;
   let counter = 1;
-  while (true) {
-    const existe = await prisma.mesa.findUnique({ where: { qr_token: token } });
-    if (!existe) return token;
+  while (await prisma.mesa.findUnique({ where: { qr_token: token } })) {
     token = `${baseToken}-${counter}`;
     counter++;
   }
+  return token;
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
 
   try {
-    // --- MODO RÁPIDO (Bulk) ---
+    // --- MODO RÁPIDO OPTIMIZADO (Paralelo) ---
     if (body.tipo === 'rapida') {
       const { cantidad, inicio } = body;
-      const mesasCreadas = [];
-      const errores = [];
+      const start = Number(inicio);
+      const count = Number(cantidad);
 
-      for (let i = 0; i < Number(cantidad); i++) {
-        const numero = Number(inicio) + i;
+      // 1. Preparamos todos los datos "en memoria" primero
+      const promesasDeCreacion = Array.from({ length: count }).map(async (_, i) => {
+        const numero = start + i;
         const nombre = `Mesa ${numero}`;
         let qr_token = `mesa-${numero}`;
 
-        // Validamos nombre SOLO contra mesas activas
+        // Verificamos nombre (Solo choca si hay otra ACTIVA con ese nombre)
         const nombreOcupado = await prisma.mesa.findFirst({
           where: { nombre: nombre, activo: true }
         });
 
         if (nombreOcupado) {
-          errores.push(`${nombre} (Ya existe activa)`);
-          continue; 
+          return { status: 'error', nombre, reason: 'Ya existe activa' };
         }
 
-        // El QR siempre debe ser único (aunque la otra esté inactiva)
-        qr_token = await generarTokenUnico(qr_token);
+        // Buscamos token libre
+        qr_token = await getUniqueToken(qr_token);
 
-        const nueva = await prisma.mesa.create({
-          data: { nombre, qr_token }
-        });
-        mesasCreadas.push(nueva);
-      }
+        // Creamos la mesa
+        try {
+          const nueva = await prisma.mesa.create({
+            data: { nombre, qr_token }
+          });
+          return { status: 'ok', data: nueva };
+        } catch (e) {
+          return { status: 'error', nombre, reason: 'Error guardando' };
+        }
+      });
+
+      // 2. DISPARAMOS TODAS JUNTAS 🚀
+      const resultados = await Promise.all(promesasDeCreacion);
+
+      // 3. Procesamos los resultados
+      const creadas = resultados.filter(r => r.status === 'ok').length;
+      const fallidas = resultados
+        .filter(r => r.status === 'error')
+        // @ts-ignore
+        .map(r => r.nombre);
 
       return NextResponse.json({ 
         success: true, 
-        creadas: mesasCreadas.length, 
-        fallidas: errores 
+        creadas, 
+        fallidas 
       });
     } 
     
-    // --- MODO MANUAL ---
+    // --- MODO MANUAL (Sin cambios, ya es rápido porque es una sola) ---
     else {
-      // Validamos nombre SOLO contra mesas activas
       const nombreOcupado = await prisma.mesa.findFirst({
         where: { nombre: body.nombre, activo: true }
       });
 
       if (nombreOcupado) {
-        return NextResponse.json(
-          { error: `⚠️ El nombre "${body.nombre}" ya está siendo usado por una mesa activa.` }, 
-          { status: 400 }
-        );
+        return NextResponse.json({ error: `⚠️ El nombre ya existe.` }, { status: 400 });
       }
 
-      // Generamos token único si hace falta
-      const qrFinal = await generarTokenUnico(body.qr_token);
+      const qrFinal = await getUniqueToken(body.qr_token);
 
       const nueva = await prisma.mesa.create({
-        data: {
-          nombre: body.nombre,
-          qr_token: qrFinal
-        }
+        data: { nombre: body.nombre, qr_token: qrFinal }
       });
       
       return NextResponse.json(nueva);
