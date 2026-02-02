@@ -9,9 +9,15 @@ export default function ProductosPage() {
   const [form, setForm] = useState({ precio: 0, nombre: "" });
 
   const cargarProductos = async () => {
-    const res = await fetch("/api/admin/productos");
-    const data = await res.json();
-    setCategorias(data);
+    try {
+      const res = await fetch("/api/admin/productos");
+      if (res.ok) {
+        const data = await res.json();
+        setCategorias(data);
+      }
+    } catch (error) {
+      console.error("Error cargando productos:", error);
+    }
   };
 
   useEffect(() => {
@@ -65,18 +71,18 @@ export default function ProductosPage() {
                       type="text" 
                       value={form.nombre}
                       onChange={(e) => setForm({...form, nombre: e.target.value})}
-                      className="border p-2 rounded w-full font-bold"
+                      className="border p-2 rounded w-full font-bold text-gray-900"
                     />
                     <input 
                       type="number" 
                       value={form.precio}
                       onChange={(e) => setForm({...form, precio: Number(e.target.value)})}
-                      className="border p-2 rounded w-32 font-mono"
+                      className="border p-2 rounded w-32 font-mono text-gray-900"
                     />
-                    <button onClick={() => guardarCambios(prod.id)} className="bg-green-600 text-white p-2 rounded shadow">
+                    <button onClick={() => guardarCambios(prod.id)} className="bg-green-600 text-white p-2 rounded shadow hover:bg-green-700">
                       💾
                     </button>
-                    <button onClick={() => setEditando(null)} className="text-gray-500 p-2">
+                    <button onClick={() => setEditando(null)} className="text-gray-500 p-2 hover:text-gray-700">
                       ✖
                     </button>
                   </div>
