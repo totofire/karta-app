@@ -2,55 +2,60 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-export const dynamic = 'force-dynamic'; // CRÍTICO: No cachear para ver datos en vivo
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // 1. Buscamos todas las mesas
-  const mesas = await prisma.mesa.findMany({
-    include: {
-      sesiones: {
-        // Solo traemos la sesión que está ABIERTA (fechaFin es null)
-        where: { fechaFin: null },
-        include: {
-          pedidos: {
-            // Incluimos items para calcular la plata
-            include: { items: true }
+  try {
+    const mesas = await prisma.mesa.findMany({
+      include: {
+        sesiones: {
+          where: { fechaFin: null }, // Buscamos sesión activa
+          include: {
+            pedidos: {
+              include: { items: true } // Para calcular el total
+            }
           }
         }
-      }
-    },
-    orderBy: { id: 'asc' } // Ordenadas por número (Mesa 1, Mesa 2...)
-  });
+      },
+      orderBy: { id: 'asc' }
+    });
 
-  // 2. Masticamos los datos para enviarlos limpios al frente
-  const estadoMesas = mesas.map(mesa => {
-    const sesionActiva = mesa.sesiones[0]; // Solo puede haber 1 o ninguna
-    
-    let totalActual = 0;
-    
-    // Si hay sesión, sumamos la plata de todos los pedidos NO cancelados
-    if (sesionActiva) {
-      sesionActiva.pedidos.forEach(pedido => {
-        if (pedido.estado !== "CANCELADO") {
-           pedido.items.forEach(item => {
-             totalActual += item.precio * item.cantidad;
-           });
+    // Transformamos los datos para el front
+    const estadoMesas = mesas.map((mesa) => {
+      const sesionActiva = mesa.sesiones[0];
+      
+      let total = 0;
+      let ultimoPedido = null;
+
+      if (sesionActiva) {
+        // Calcular total
+        sesionActiva.pedidos.forEach(p => {
+          p.items.forEach(item => {
+            total += item.precio * item.cantidad;
+          });
+        });
+        
+        // Hora del último pedido (visual)
+        if (sesionActiva.pedidos.length > 0) {
+          const ultimo = sesionActiva.pedidos[sesionActiva.pedidos.length - 1];
+          ultimoPedido = new Date(ultimo.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }
-      });
-    }
+      }
 
-    return {
-      id: mesa.id,
-      nombre: mesa.nombre,
-      estado: sesionActiva ? "OCUPADA" : "LIBRE",
-      sesionId: sesionActiva?.id || null,
-      totalActual: totalActual,
-      horaInicio: sesionActiva?.fechaInicio || null,
-      ultimoPedido: sesionActiva?.pedidos.length > 0 
-        ? sesionActiva.pedidos[sesionActiva.pedidos.length - 1].nombreCliente 
-        : null
-    };
-  });
+      return {
+        id: mesa.id,
+        nombre: mesa.nombre,
+        qr_token: mesa.qr_token, // <--- ¡ESTA LÍNEA ES LA QUE FALTABA!
+        estado: sesionActiva ? 'OCUPADA' : 'LIBRE',
+        sesionId: sesionActiva?.id || null,
+        horaInicio: sesionActiva?.fechaInicio || null,
+        totalActual: total,
+        ultimoPedido: ultimoPedido
+      };
+    });
 
-  return NextResponse.json(estadoMesas);
+    return NextResponse.json(estadoMesas);
+  } catch (error) {
+    return NextResponse.json({ error: "Error obteniendo estado" }, { status: 500 });
+  }
 }
