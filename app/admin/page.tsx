@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import Link from "next/link"; // Importante para la navegación
+import Link from "next/link"; // Importante para navegar a Productos e Historial
 
 export default function AdminDashboard() {
   const [mesas, setMesas] = useState<any[]>([]);
