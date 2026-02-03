@@ -1,5 +1,6 @@
-import "./globals.css"; // <--- ESTA LÍNEA ES LA CLAVE
+import "./globals.css";
 import type { Metadata } from "next";
+import { LoaderProvider } from "@/context/LoaderContext"; //
 
 export const metadata: Metadata = {
   title: "Karta - Menú Digital",
@@ -14,7 +15,10 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased bg-gray-50 text-gray-900">
-        {children}
+        {/* Envolvemos la aplicación con el proveedor del loader global */}
+        <LoaderProvider> 
+          {children}
+        </LoaderProvider>
       </body>
     </html>
   );

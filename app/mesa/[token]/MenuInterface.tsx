@@ -1,13 +1,13 @@
 "use client";
 import { useState } from "react";
 import Image from "next/image";
-
+import { useLoader } from "@/context/LoaderContext";
 export default function MenuInterface({ mesa, categorias }: any) {
   // LÓGICA DE INTERFAZ (Estados)
   const [carrito, setCarrito] = useState<any>({});
   const [nombre, setNombre] = useState("");
   const [enviando, setEnviando] = useState(false);
-  
+  const { showLoader, hideLoader } = useLoader();
   // Estado solo para resaltar el botón activo visualmente (opcional)
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
 
@@ -49,10 +49,13 @@ export default function MenuInterface({ mesa, categorias }: any) {
     return total + (p.precio * (carrito[p.id] || 0));
   }, 0);
 
-  // Lógica de Enviar Pedido
   const confirmarPedido = async () => {
     if (!nombre.trim()) return alert("¡Para! Decinos tu nombre para llamarte.");
+    
+    // 1. Mostramos el loader de Karta antes de empezar
+    showLoader(); 
     setEnviando(true);
+
     const items = Object.entries(carrito).map(([id, cantidad]) => ({
       productoId: Number(id),
       cantidad
@@ -77,9 +80,13 @@ export default function MenuInterface({ mesa, categorias }: any) {
         alert("Hubo un error al pedir. Llamá al mozo.");
       }
     } catch (error) {
-      alert("Error de conexión");
+      console.error("Error de conexión:", error);
+      alert("Error de conexión con el servidor.");
+    } finally {
+      // 2. Ocultamos el loader al terminar la operación
+      hideLoader();
+      setEnviando(false);
     }
-    setEnviando(false);
   };
 
   return (
