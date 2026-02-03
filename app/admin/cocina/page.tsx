@@ -46,18 +46,23 @@ export default function CocinaPage() {
   });
 
   const completarPedido = async (id: number) => {
-    // Optimistic UI: podés hacer que desaparezca antes de confirmar, pero por seguridad usamos promise
+    // 🚀 ACTUALIZACIÓN OPTIMISTA
+    // 1. Calculamos cómo se vería la lista SIN este pedido
+    const pedidosNuevos = pedidos.filter((p: any) => p.id !== id);
+    
+    // 2. Actualizamos la pantalla YA (sin esperar a la API)
+    mutate(pedidosNuevos, false);
+
+    // 3. Hacemos el fetch real en background
     toast.promise(
-      async () => {
-        // CORRECCIÓN: Usamos PATCH y la URL correcta
-        const res = await fetch(`/api/pedidos/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ estado: "ENTREGADO" }),
-        });
+      fetch(`/api/pedidos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: "ENTREGADO" }),
+      }).then(res => {
         if (!res.ok) throw new Error("Error en API");
-        mutate(); // Recarga instantánea
-      },
+        mutate(); // Revalidamos de verdad por si acaso
+      }),
       {
         loading: 'Marchando mesa... 🍳',
         success: '¡Pedido listo! 🔔',

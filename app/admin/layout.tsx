@@ -12,7 +12,8 @@ import {
   History, 
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Tags // <--- 1. Importamos el ícono nuevo
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -24,6 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Cocina en Vivo", href: "/admin/cocina", icon: ChefHat },
     { name: "Mesas y Zonas", href: "/admin/mesas", icon: Armchair },
     { name: "Productos y Carta", href: "/admin/productos", icon: UtensilsCrossed },
+    { name: "Categorías", href: "/admin/categorias", icon: Tags },
     { name: "Códigos QR", href: "/admin/qr", icon: QrCode },
     { name: "Historial Ventas", href: "/admin/historial", icon: History },
   ];
@@ -69,8 +71,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        {/* --- NAVEGACIÓN (CAMBIO CLAVE AQUÍ) --- */}
-        {/* Quitamos overflow-hidden/auto para que los tooltips puedan "salirse" de la caja */}
+        {/* --- NAVEGACIÓN --- */}
         <nav className="flex-1 p-3 space-y-1 mt-4 overflow-visible">
           {menuItems.map((item) => {
             const isActive = pathname === item.href;
@@ -90,17 +91,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="flex-shrink-0 relative z-10" />
                 
-                {/* Texto del link (Solo visible abierto) */}
+                {/* Texto del link */}
                 <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-10 w-0 absolute"}`}>
                   {item.name}
                 </span>
 
-                {/* TOOLTIP FLOTANTE (Visible cerrado) */}
-                {/* Agregué z-50, whitespace-nowrap y una sombra fuerte para que se destaque sobre el contenido principal */}
+                {/* TOOLTIP FLOTANTE */}
                 {!isSidebarOpen && (
                   <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
                     {item.name}
-                    {/* Flechita decorativa del tooltip */}
                     <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45"></div>
                   </div>
                 )}
@@ -147,6 +146,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* BARRA MÓVIL */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-3 z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+         {/* Mostramos los primeros 5 ítems en móvil para que entren bien */}
          {menuItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;

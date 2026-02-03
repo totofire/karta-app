@@ -4,52 +4,60 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// --- CAMBIO IMPORTANTE AQUÍ ABAJO ---
 datasource db {
-  provider = "postgresql" 
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// --- TUS MODELOS (Iguales que antes) ---
-
 model Mesa {
   id        Int      @id @default(autoincrement())
-  nombre    String   
-  qr_token  String   @unique 
+  nombre    String
+  qr_token  String   @unique
   activo    Boolean  @default(true)
-  sector    String   @default("General") // <--- AGREGÁ ESTO
+  sector    String   @default("General")
   sesiones  Sesion[]
+
+  // 🚀 ÍNDICES DE VELOCIDAD
+  @@index([activo, sector]) // Para filtrar rápido en el dashboard
+  @@index([sector])         // Para agrupaciones
 }
 
 model Sesion {
-  id           Int       @id @default(autoincrement())
-  mesaId       Int
-  mesa         Mesa      @relation(fields: [mesaId], references: [id])
-  fechaInicio  DateTime  @default(now())
-  fechaFin     DateTime?
-  totalVenta   Float     @default(0)
-  pedidos      Pedido[]
+  id          Int       @id @default(autoincrement())
+  mesaId      Int
+  mesa        Mesa      @relation(fields: [mesaId], references: [id])
+  fechaInicio DateTime  @default(now())
+  fechaFin    DateTime?
+  totalVenta  Float     @default(0)
+  pedidos     Pedido[]
+  nombreHost  String?
+
+  // 🚀 ÍNDICE CRÍTICO
+  @@index([mesaId, fechaFin]) // Para encontrar la sesión activa de una mesa al instante
 }
 
 model Categoria {
   id             Int        @id @default(autoincrement())
   nombre         String
   orden          Int        @default(0)
-  imprimirCocina Boolean    @default(true) // <--- AGREGÁ ESTO
+  imprimirCocina Boolean    @default(true)
   productos      Producto[]
 }
 
 model Producto {
   id          Int          @id @default(autoincrement())
-  nombre      String       
-  descripcion String?      
+  nombre      String
+  descripcion String?
   precio      Float
-  imagen      String?      
-  activo      Boolean      @default(true) 
-  orden       Int          @default(0)    
+  imagen      String?
+  activo      Boolean      @default(true)
+  orden       Int          @default(0)
   categoriaId Int
   categoria   Categoria    @relation(fields: [categoriaId], references: [id])
   items       ItemPedido[]
+
+  // 🚀 ÍNDICE PARA LA CARTA
+  @@index([categoriaId, activo, orden]) // Carga del menú ultra-rápida
 }
 
 model Pedido {
@@ -57,9 +65,13 @@ model Pedido {
   sesionId      Int
   sesion        Sesion       @relation(fields: [sesionId], references: [id])
   nombreCliente String?
-  estado        String       @default("PENDIENTE") 
+  estado        String       @default("PENDIENTE")
   fecha         DateTime     @default(now())
   items         ItemPedido[]
+
+  // 🚀 ÍNDICES PARA COCINA
+  @@index([estado, fecha]) // Para ordenar comandas pendientes
+  @@index([sesionId])      // Para calcular totales de mesa
 }
 
 model ItemPedido {
@@ -69,19 +81,28 @@ model ItemPedido {
   productoId    Int
   producto      Producto @relation(fields: [productoId], references: [id])
   cantidad      Int
-  precio        Float    
-  observaciones String?  
+  precio        Float
+  observaciones String?
 }
+
 model Usuario {
   id        Int      @id @default(autoincrement())
   nombre    String
   email     String   @unique
-  password  String   // En un caso real esto se encripta, para MVP lo usaremos directo
-  rol       String   @default("ADMIN") // ADMIN, COCINA, MOZO
+  password  String
+  rol       String   @default("ADMIN")
   fechaAlta DateTime @default(now())
 }
+
 model Sector {
-  id      Int    @id @default(autoincrement())
-  nombre  String @unique  // <--- El @unique hace la validación de duplicados sola
-  orden   Int    @default(0)
+  id     Int    @id @default(autoincrement())
+  nombre String @unique
+  orden  Int    @default(0)
+}
+
+model Configuracion {
+  id           Int     @id @default(1)
+  horaApertura String  @default("08:00")
+  horaCierre   String  @default("00:00")
+  cajaAbierta  Boolean @default(true)
 }

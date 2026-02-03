@@ -1,58 +1,87 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const mesas = await prisma.mesa.findMany({
-      where: { activo: true }, // Solo traemos las activas
-      include: {
+      where: { activo: true },
+      select: {
+        id: true,
+        nombre: true,
+        qr_token: true,
+        sector: true,
         sesiones: {
           where: { fechaFin: null },
-          include: {
-            pedidos: { include: { items: true } }
+          take: 1, // Traemos solo la sesión activa si existe
+          select: {
+            id: true,
+            fechaInicio: true,
+            pedidos: {
+              select: {
+                fecha: true,
+                estado: true,
+                items: {
+                  select: {
+                    cantidad: true,
+                    precio: true
+                  }
+                }
+              }
+            }
           }
         }
       },
       orderBy: [{ sector: 'asc' }, { nombre: 'asc' }]
     });
 
+    // Procesamiento en memoria (Node.js es rapidísimo para esto)
     const estadoMesas = mesas.map((mesa) => {
       const sesionActiva = mesa.sesiones[0];
       
-      let total = 0;
-      let ultimoPedido = null;
-
-      if (sesionActiva) {
-        sesionActiva.pedidos.forEach(p => {
-          p.items.forEach(item => {
-            total += item.precio * item.cantidad;
-          });
-        });
-        
-        if (sesionActiva.pedidos.length > 0) {
-          const ultimo = sesionActiva.pedidos[sesionActiva.pedidos.length - 1];
-          ultimoPedido = new Date(ultimo.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        }
+      if (!sesionActiva) {
+        return {
+          id: mesa.id,
+          nombre: mesa.nombre,
+          qr_token: mesa.qr_token,
+          sector: mesa.sector || "General",
+          estado: 'LIBRE',
+          sesionId: null,
+          horaInicio: null,
+          totalActual: 0,
+          ultimoPedido: null
+        };
       }
+
+      // Cálculo de totales usando reduce (sin ir a la BD de nuevo)
+      const total = sesionActiva.pedidos.reduce(
+        (sum, p) => sum + p.items.reduce((itemSum, i) => itemSum + (i.precio * i.cantidad), 0),
+        0
+      );
+
+      const ultimoPedido = sesionActiva.pedidos.length > 0
+        ? new Date(sesionActiva.pedidos[sesionActiva.pedidos.length - 1].fecha)
+            .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
 
       return {
         id: mesa.id,
         nombre: mesa.nombre,
         qr_token: mesa.qr_token,
-        sector: mesa.sector || "General", // <--- AGREGAMOS ESTO
-        estado: sesionActiva ? 'OCUPADA' : 'LIBRE',
-        sesionId: sesionActiva?.id || null,
-        horaInicio: sesionActiva?.fechaInicio || null,
+        sector: mesa.sector || "General",
+        estado: 'OCUPADA',
+        sesionId: sesionActiva.id,
+        horaInicio: sesionActiva.fechaInicio,
         totalActual: total,
-        ultimoPedido: ultimoPedido
+        ultimoPedido
       };
     });
 
     return NextResponse.json(estadoMesas);
   } catch (error) {
+    console.error(error);
     return NextResponse.json({ error: "Error obteniendo estado" }, { status: 500 });
   }
 }
