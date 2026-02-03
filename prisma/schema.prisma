@@ -14,9 +14,10 @@ datasource db {
 
 model Mesa {
   id        Int      @id @default(autoincrement())
-  nombre    String
-  qr_token  String   @unique
-  activo    Boolean  @default(true) 
+  nombre    String   
+  qr_token  String   @unique 
+  activo    Boolean  @default(true)
+  sector    String   @default("General") // <--- AGREGÁ ESTO
   sesiones  Sesion[]
 }
 
@@ -77,4 +78,9 @@ model Usuario {
   password  String   // En un caso real esto se encripta, para MVP lo usaremos directo
   rol       String   @default("ADMIN") // ADMIN, COCINA, MOZO
   fechaAlta DateTime @default(now())
+}
+model Sector {
+  id      Int    @id @default(autoincrement())
+  nombre  String @unique  // <--- El @unique hace la validación de duplicados sola
+  orden   Int    @default(0)
 }

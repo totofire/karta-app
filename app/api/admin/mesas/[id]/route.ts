@@ -35,7 +35,8 @@ export async function PATCH(
       data: {
         nombre: body.nombre,
         qr_token: body.qr_token,
-        activo: body.activo
+        activo: body.activo,
+        sector: body.sector // <--- Agregamos esto para permitir cambiar de zona
       }
     });
     return NextResponse.json(actualizada);

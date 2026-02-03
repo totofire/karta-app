@@ -7,20 +7,18 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const mesas = await prisma.mesa.findMany({
+      where: { activo: true }, // Solo traemos las activas
       include: {
         sesiones: {
-          where: { fechaFin: null }, // Buscamos sesión activa
+          where: { fechaFin: null },
           include: {
-            pedidos: {
-              include: { items: true } // Para calcular el total
-            }
+            pedidos: { include: { items: true } }
           }
         }
       },
-      orderBy: { id: 'asc' }
+      orderBy: [{ sector: 'asc' }, { nombre: 'asc' }]
     });
 
-    // Transformamos los datos para el front
     const estadoMesas = mesas.map((mesa) => {
       const sesionActiva = mesa.sesiones[0];
       
@@ -28,14 +26,12 @@ export async function GET() {
       let ultimoPedido = null;
 
       if (sesionActiva) {
-        // Calcular total
         sesionActiva.pedidos.forEach(p => {
           p.items.forEach(item => {
             total += item.precio * item.cantidad;
           });
         });
         
-        // Hora del último pedido (visual)
         if (sesionActiva.pedidos.length > 0) {
           const ultimo = sesionActiva.pedidos[sesionActiva.pedidos.length - 1];
           ultimoPedido = new Date(ultimo.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -45,7 +41,8 @@ export async function GET() {
       return {
         id: mesa.id,
         nombre: mesa.nombre,
-        qr_token: mesa.qr_token, // <--- ¡ESTA LÍNEA ES LA QUE FALTABA!
+        qr_token: mesa.qr_token,
+        sector: mesa.sector || "General", // <--- AGREGAMOS ESTO
         estado: sesionActiva ? 'OCUPADA' : 'LIBRE',
         sesionId: sesionActiva?.id || null,
         horaInicio: sesionActiva?.fechaInicio || null,
