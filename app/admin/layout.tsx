@@ -3,6 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Image from "next/image"; 
+import { Toaster } from "react-hot-toast"; // Para que se vean los carteles
+import NotificationListener from "@/components/NotificationListener"; // Tu oreja global
 import { 
   LayoutDashboard, 
   ChefHat, 
@@ -34,7 +36,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-gray-50 flex transition-all duration-300">
-      
+      <Toaster /> 
+      <NotificationListener />
       {/* SIDEBAR (Oculto al imprimir) */}
       <aside 
         className={`

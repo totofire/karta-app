@@ -1,17 +1,16 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 import { 
   CheckCircle2, 
-  GlassWater, 
+  GlassWater, // Ícono de copa/bebida
   Clock, 
   Printer, 
-  AlertCircle,
-  BellRing // Ícono
+  AlertCircle
 } from "lucide-react";
 
-// ... (Componentes Reloj y TiempoTranscurrido igual que antes) ...
+// --- COMPONENTES AUXILIARES ---
 const Reloj = ({ fecha }: { fecha: string }) => {
   const [hora, setHora] = useState<string>("");
   useEffect(() => {
@@ -44,72 +43,13 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function BarraPage() {
+  // Usamos la nueva API de barra
   const { data: pedidos = [], mutate } = useSWR("/api/barra", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
   });
 
-  // --- LÓGICA DE NOTIFICACIONES BARRA ---
-  const pedidosRef = useRef<number[]>([]);
-  const primeraCarga = useRef(true);
-
-  useEffect(() => {
-    if (pedidos.length > 0) {
-      const idsActuales = pedidos.map((p: any) => p.id);
-      
-      if (!primeraCarga.current) {
-        const nuevos = pedidos.filter((p: any) => !pedidosRef.current.includes(p.id));
-        
-        if (nuevos.length > 0) {
-          // 1. Sonido
-          const audio = new Audio("/sounds/ding.mp3");
-          audio.play().catch(() => {});
-
-          // 2. Cartel Azul
-          nuevos.forEach((p: any) => {
-            toast.custom((t) => (
-              <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white shadow-2xl rounded-xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 border-l-8 border-blue-600`}>
-                <div className="flex-1 w-0 p-4">
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0 pt-0.5">
-                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <GlassWater className="h-6 w-6 text-blue-600 animate-bounce" />
-                      </div>
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <p className="text-lg font-black text-gray-900">
-                        ¡BEBIDAS NUEVAS! 🍹
-                      </p>
-                      <p className="mt-1 text-sm text-gray-500 font-bold">
-                        Mesa {p.sesion.mesa.nombre}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {p.items.length} items
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex border-l border-gray-200">
-                  <button
-                    onClick={() => toast.dismiss(t.id)}
-                    className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-bold text-blue-600 hover:text-blue-500 focus:outline-none"
-                  >
-                    Visto
-                  </button>
-                </div>
-              </div>
-            ), { duration: 8000, position: 'top-right' });
-          });
-        }
-      } else {
-        primeraCarga.current = false;
-      }
-      pedidosRef.current = idsActuales;
-    }
-  }, [pedidos]);
-
   const imprimirComanda = (p: any) => {
-    // ... (Tu código de impresión igual) ...
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
         ventana.document.write(`
@@ -147,23 +87,32 @@ export default function BarraPage() {
   };
 
   const completarPedido = async (id: number) => {
+    // En barra, al completar, asumimos que "ENTREGAMOS" la bebida.
+    // OJO: Si compartís el pedido con cocina, cambiar el estado global a "ENTREGADO" podría borrarlo de la cocina también.
+    // ESTRATEGIA SIMPLE: Si es mixto, solo lo ocultamos localmente o usamos un estado intermedio. 
+    // Para simplificar: Marcamos entregado (asumiendo que cocina va por su lado o que son pedidos distintos).
+    
     const pedidosNuevos = pedidos.filter((p: any) => p.id !== id);
     mutate(pedidosNuevos, false);
+
     toast.promise(
       fetch(`/api/pedidos/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: "ENTREGADO" }),
+        body: JSON.stringify({ estado: "ENTREGADO" }), // O Podríamos usar otro estado si quisiéramos
       }).then(() => mutate()),
-      { loading: 'Despachando...', success: '¡Listo!', error: 'Error' }
+      {
+        loading: 'Despachando bebidas...',
+        success: '¡Listo! 🍻',
+        error: 'Error',
+      }
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
-      <Toaster />
       
-      {/* HEADER AZUL */}
+      {/* HEADER AZUL (Diferente a Cocina) */}
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6 border-b border-slate-700 pb-6">
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 w-12 h-12 flex items-center justify-center rounded-xl shadow-lg shadow-blue-900/50">
@@ -226,6 +175,7 @@ export default function BarraPage() {
                        <p className="font-bold text-lg text-slate-800 leading-tight">
                          {item.producto.nombre}
                        </p>
+                       {/* Notas en barra (ej: con hielo) */}
                        {item.observaciones && (
                          <span className="text-xs text-blue-600 font-bold italic block mt-1">
                            {item.observaciones}
