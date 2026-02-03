@@ -65,13 +65,13 @@ model Pedido {
   sesionId      Int
   sesion        Sesion       @relation(fields: [sesionId], references: [id])
   nombreCliente String?
-  estado        String       @default("PENDIENTE")
+  estado        String       @default("PENDIENTE") 
   fecha         DateTime     @default(now())
+  impreso       Boolean      @default(false) // <--- NUEVO CAMPO
   items         ItemPedido[]
 
-  // 🚀 ÍNDICES PARA COCINA
-  @@index([estado, fecha]) // Para ordenar comandas pendientes
-  @@index([sesionId])      // Para calcular totales de mesa
+  @@index([estado, fecha])
+  @@index([sesionId])
 }
 
 model ItemPedido {
