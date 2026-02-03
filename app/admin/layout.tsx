@@ -13,7 +13,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Tags // <--- 1. Importamos el ícono nuevo
+  Tags, 
+  GlassWater,// <--- 1. Importamos el ícono nuevo
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const menuItems = [
     { name: "Panel General", href: "/admin", icon: LayoutDashboard },
     { name: "Cocina en Vivo", href: "/admin/cocina", icon: ChefHat },
+    { name: "Barra / Bebidas", href: "/admin/barra", icon: GlassWater },
     { name: "Mesas y Zonas", href: "/admin/mesas", icon: Armchair },
     { name: "Productos y Carta", href: "/admin/productos", icon: UtensilsCrossed },
     { name: "Categorías", href: "/admin/categorias", icon: Tags },
