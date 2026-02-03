@@ -1,18 +1,17 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast"; // Importamos Toaster por si acaso
 import { 
   CheckCircle2, 
   ChefHat, 
   Clock, 
   Printer, 
   AlertCircle,
-  Repeat 
+  BellRing // Ícono para la alerta
 } from "lucide-react";
 
-// --- COMPONENTES AUXILIARES ---
-
+// ... (Componentes Reloj y TiempoTranscurrido se mantienen igual) ...
 const Reloj = ({ fecha }: { fecha: string }) => {
   const [hora, setHora] = useState<string>("");
   useEffect(() => {
@@ -44,17 +43,78 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// --- PÁGINA PRINCIPAL ---
-
 export default function CocinaPage() {
   const { data: pedidos = [], mutate } = useSWR("/api/cocina", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
   });
 
-  // Función de impresión térmica
+  // --- LÓGICA DE NOTIFICACIONES ---
+  const pedidosRef = useRef<number[]>([]); // Guardamos los IDs anteriores
+  const primeraCarga = useRef(true); // Para no sonar al abrir la app
+
+  useEffect(() => {
+    if (pedidos.length > 0) {
+      const idsActuales = pedidos.map((p: any) => p.id);
+      
+      // Si no es la primera carga, buscamos pedidos nuevos
+      if (!primeraCarga.current) {
+        const nuevos = pedidos.filter((p: any) => !pedidosRef.current.includes(p.id));
+        
+        if (nuevos.length > 0) {
+          // 1. Reproducir Sonido
+          const audio = new Audio("/sounds/ding.mp3");
+          audio.play().catch(e => console.log("Hacé click en la página para habilitar audio"));
+
+          // 2. Mostrar Cartel Visual (Toast Personalizado)
+          nuevos.forEach((p: any) => {
+            toast.custom((t) => (
+              <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white shadow-2xl rounded-xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 border-l-8 border-red-600`}>
+                <div className="flex-1 w-0 p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 pt-0.5">
+                      <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <BellRing className="h-6 w-6 text-red-600 animate-bounce" />
+                      </div>
+                    </div>
+                    <div className="ml-3 flex-1">
+                      <p className="text-lg font-black text-gray-900">
+                        ¡NUEVA COMANDA! 🍔
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500 font-bold">
+                        Mesa {p.sesion.mesa.nombre}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {p.items.length} items • {p.nombreCliente}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex border-l border-gray-200">
+                  <button
+                    onClick={() => toast.dismiss(t.id)}
+                    className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-bold text-red-600 hover:text-red-500 focus:outline-none"
+                  >
+                    Visto
+                  </button>
+                </div>
+              </div>
+            ), { duration: 8000, position: 'top-right' });
+          });
+        }
+      } else {
+        primeraCarga.current = false;
+      }
+
+      // Actualizamos la referencia
+      pedidosRef.current = idsActuales;
+    }
+  }, [pedidos]);
+
+  // ... (funciones imprimirComanda y completarPedido igual que antes) ...
   const imprimirComanda = async (p: any) => {
-    // 1. Abrir ventana de impresión (formato ticket 80mm)
+    // ... (Tu código de impresión existente) ...
+    // (Pegalo aquí igual que estaba en tu archivo anterior)
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
         ventana.document.write(`
@@ -97,39 +157,33 @@ export default function CocinaPage() {
         ventana.close();
     }
 
-    // 2. Marcar como impreso en la base de datos (si no lo estaba)
     if (!p.impreso) {
         await fetch(`/api/pedidos/${p.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ impreso: true }),
         });
-        mutate(); // Refrescar UI
+        mutate();
         toast.success("Marcado como impreso");
     }
   };
 
   const completarPedido = async (id: number) => {
-    // UI Optimista: Lo sacamos de la lista visualmente
     const pedidosFiltrados = pedidos.filter((p: any) => p.id !== id);
     mutate(pedidosFiltrados, false);
-
     toast.promise(
       fetch(`/api/pedidos/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ estado: "ENTREGADO" }),
       }).then(() => mutate()),
-      {
-        loading: 'Marchando...',
-        success: '¡Plato listo! 🔔',
-        error: 'Error',
-      }
+      { loading: 'Marchando...', success: '¡Listo!', error: 'Error' }
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
+      <Toaster /> {/* Aseguramos que se vean los carteles */}
       
       {/* HEADER TIPO KDS */}
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6 border-b border-slate-700 pb-6">
