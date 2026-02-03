@@ -32,10 +32,11 @@ model Sesion {
 }
 
 model Categoria {
-  id        Int        @id @default(autoincrement())
-  nombre    String     
-  orden     Int        @default(0) 
-  productos Producto[]
+  id             Int        @id @default(autoincrement())
+  nombre         String
+  orden          Int        @default(0)
+  imprimirCocina Boolean    @default(true) // <--- AGREGÁ ESTO
+  productos      Producto[]
 }
 
 model Producto {

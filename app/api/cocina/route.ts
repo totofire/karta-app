@@ -2,38 +2,48 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-
-// Esta línea es CRÍTICA: le dice a Next.js que NO guarde caché de esta respuesta.
-// Si no la ponés, la cocina podría ver siempre los mismos pedidos viejos.
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  try {
-    const pedidosPendientes = await prisma.pedido.findMany({
-      where: {
-        estado: 'PENDIENTE' // Solo lo que hay que cocinar
-      },
-      include: {
-        sesion: {
-          include: {
-            mesa: true // Para saber a qué mesa llevarlo
-          }
-        },
-        items: {
-          include: {
-            producto: true // Para ver el nombre de la comida (Hamburguesa, etc)
+  const pedidos = await prisma.pedido.findMany({
+    where: { 
+      estado: { in: ['PENDIENTE', 'EN_PREPARACION'] } 
+    },
+    include: {
+      items: {
+        include: {
+          producto: {
+            include: { categoria: true } // IMPORTANTE: Traer la categoría para ver el flag
           }
         }
       },
-      orderBy: {
-        fecha: 'asc' // FIFO: Lo primero que entra es lo primero que sale
+      sesion: {
+        include: { mesa: true }
       }
-    });
+    },
+    orderBy: { fecha: 'asc' }
+  });
 
-    return NextResponse.json(pedidosPendientes);
+  // --- EL FILTRO MÁGICO ---
+  const pedidosFiltrados = pedidos.map(p => {
+    // 1. Nos quedamos solo con los items cuya categoría tiene 'imprimirCocina: true'
+    const itemsCocina = p.items.filter(item => item.producto.categoria.imprimirCocina === true);
+    
+    // 2. Devolvemos el pedido modificado
+    return { ...p, items: itemsCocina };
+  })
+  // 3. Si un pedido se quedó sin items (ej: era solo una Coca), lo borramos de la lista final
+  .filter(p => p.items.length > 0);
 
-  } catch (error) {
-    console.error("Error buscando pedidos:", error);
-    return NextResponse.json({ error: "Error de servidor" }, { status: 500 });
-  }
+  return NextResponse.json(pedidosFiltrados);
+}
+
+// El POST dejalo igual
+export async function POST(req: Request) {
+  const { pedidoId, nuevoEstado } = await req.json();
+  await prisma.pedido.update({
+    where: { id: pedidoId },
+    data: { estado: nuevoEstado }
+  });
+  return NextResponse.json({ success: true });
 }
