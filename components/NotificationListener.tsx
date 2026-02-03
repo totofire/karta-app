@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import { BellRing, GlassWater } from "lucide-react";
@@ -7,87 +7,133 @@ import { BellRing, GlassWater } from "lucide-react";
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function NotificationListener() {
-  // Vigilamos ambas colas al mismo tiempo
-  const { data: cocina = [] } = useSWR("/api/cocina", fetcher, { refreshInterval: 5000 });
-  const { data: barra = [] } = useSWR("/api/barra", fetcher, { refreshInterval: 5000 });
+  // 🚀 CLAVE 1: refreshWhenHidden: true
+  // Esto obliga al navegador a seguir buscando pedidos aunque estés en WhatsApp
+  const { data: cocina, isLoading: cargandoCocina } = useSWR("/api/cocina", fetcher, { 
+    refreshInterval: 5000,
+    revalidateOnFocus: false,
+    refreshWhenHidden: true 
+  });
+  
+  const { data: barra, isLoading: cargandoBarra } = useSWR("/api/barra", fetcher, { 
+    refreshInterval: 5000,
+    revalidateOnFocus: false,
+    refreshWhenHidden: true
+  });
 
-  const cocinaRef = useRef<number[]>([]);
-  const barraRef = useRef<number[]>([]);
-  const primeraCarga = useRef(true);
+  const cocinaIds = useRef<Set<number>>(new Set());
+  const barraIds = useRef<Set<number>>(new Set());
+  const [listo, setListo] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Pedimos permiso para notificaciones del sistema al cargar
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+    // Pre-cargamos el audio
+    audioRef.current = new Audio("/sounds/ding.mp3");
+  }, []);
 
   useEffect(() => {
-    // Evitamos notificar apenas cargamos la página (sería molesto)
-    if (primeraCarga.current) {
-        if (cocina.length > 0) cocinaRef.current = cocina.map((p:any) => p.id);
-        if (barra.length > 0) barraRef.current = barra.map((p:any) => p.id);
-        primeraCarga.current = false;
+    // 1. INICIALIZACIÓN SILENCIOSA
+    if (!listo && !cargandoCocina && !cargandoBarra && cocina && barra) {
+        cocina.forEach((p:any) => cocinaIds.current.add(p.id));
+        barra.forEach((p:any) => barraIds.current.add(p.id));
+        setListo(true);
         return;
     }
 
-    // 1. DETECTAR NUEVOS EN COCINA 🍔
-    const nuevosCocina = cocina.filter((p:any) => !cocinaRef.current.includes(p.id));
-    if (nuevosCocina.length > 0) {
-        playDing();
-        nuevosCocina.forEach((p:any) => mostrarAlerta("cocina", p));
-        cocinaRef.current = cocina.map((p:any) => p.id);
+    // 2. MONITOREO
+    if (listo) {
+        // --- COCINA ---
+        if (cocina) {
+            const nuevos = cocina.filter((p:any) => !cocinaIds.current.has(p.id));
+            if (nuevos.length > 0) {
+                reproducirAlerta();
+                nuevos.forEach((p:any) => {
+                    notificar("cocina", p);
+                    cocinaIds.current.add(p.id);
+                });
+            }
+        }
+
+        // --- BARRA ---
+        if (barra) {
+            const nuevos = barra.filter((p:any) => !barraIds.current.has(p.id));
+            if (nuevos.length > 0) {
+                reproducirAlerta();
+                nuevos.forEach((p:any) => {
+                    notificar("barra", p);
+                    barraIds.current.add(p.id);
+                });
+            }
+        }
     }
+  }, [cocina, barra, cargandoCocina, cargandoBarra, listo]);
 
-    // 2. DETECTAR NUEVOS EN BARRA 🍹
-    const nuevosBarra = barra.filter((p:any) => !barraRef.current.includes(p.id));
-    if (nuevosBarra.length > 0) {
-        playDing();
-        nuevosBarra.forEach((p:any) => mostrarAlerta("barra", p));
-        barraRef.current = barra.map((p:any) => p.id);
+  const reproducirAlerta = () => {
+    // Intentamos reproducir sonido
+    if (audioRef.current) {
+        audioRef.current.currentTime = 0; // Reiniciar si ya estaba sonando
+        audioRef.current.volume = 1.0;    // Volumen al máximo
+        audioRef.current.play().catch((e) => {
+            console.warn("El navegador bloqueó el audio automático. Hacé click en la página una vez.");
+        });
     }
-
-  }, [cocina, barra]);
-
-  const playDing = () => {
-    const audio = new Audio("/sounds/ding.mp3");
-    audio.play().catch(e => console.log("Interacción requerida para audio"));
   };
 
-  const mostrarAlerta = (tipo: "cocina" | "barra", p: any) => {
+  const notificar = (tipo: "cocina" | "barra", p: any) => {
     const esCocina = tipo === "cocina";
-    
+    const titulo = esCocina ? "¡NUEVA COMANDA! 🍔" : "¡BEBIDAS NUEVAS! 🍹";
+    const texto = `Mesa ${p.sesion.mesa.nombre} • ${p.items.length} items`;
+
+    // A. Notificación Visual en la App (Toast)
+    mostrarToast(esCocina, titulo, texto, p);
+
+    // B. Notificación del Sistema (Windows/Android)
+    // Esto es lo que te salva si estás en WhatsApp
+    if (typeof window !== 'undefined' && 'Notification' in window && document.hidden) {
+        if (Notification.permission === "granted") {
+            const notif = new Notification("KARTA: " + titulo, {
+                body: texto,
+                icon: "/logo-carga.png", // Asegurate que esta imagen exista
+                tag: "nuevo-pedido" // Evita spam masivo, agrupa
+            });
+            notif.onclick = () => {
+                window.focus(); // Intenta traer la ventana al frente
+                window.location.href = esCocina ? "/admin/cocina" : "/admin/barra";
+            };
+        }
+    }
+  };
+
+  const mostrarToast = (esCocina: boolean, titulo: string, texto: string, p: any) => {
     toast.custom((t) => (
       <div 
         onClick={() => {
-            // Al hacer click te lleva a la sección correspondiente
             window.location.href = esCocina ? "/admin/cocina" : "/admin/barra";
             toast.dismiss(t.id);
         }}
-        className={`${t.visible ? 'animate-in slide-in-from-top-2 fade-in' : 'animate-out slide-out-to-top-2 fade-out'} 
-        max-w-md w-full bg-white shadow-2xl rounded-xl pointer-events-auto flex ring-1 ring-black ring-opacity-5 
-        cursor-pointer hover:bg-gray-50 transition-colors border-l-8 ${esCocina ? 'border-red-600' : 'border-blue-600'}`}
+        className={`${t.visible ? 'animate-in slide-in-from-top-5 fade-in' : 'animate-out fade-out'} 
+        max-w-sm w-full bg-white shadow-xl rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 
+        cursor-pointer hover:scale-[1.02] transition-transform duration-200 overflow-hidden border-l-4 ${esCocina ? 'border-red-500' : 'border-blue-500'}`}
       >
-        <div className="flex-1 w-0 p-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0 pt-0.5">
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center ${esCocina ? 'bg-red-100' : 'bg-blue-100'}`}>
-                {esCocina ? (
-                    <BellRing className="h-6 w-6 text-red-600 animate-bounce" />
-                ) : (
-                    <GlassWater className="h-6 w-6 text-blue-600 animate-bounce" />
-                )}
-              </div>
+        <div className="flex-1 p-4 flex items-center gap-4">
+            <div className={`h-12 w-12 rounded-full flex items-center justify-center flex-shrink-0 ${esCocina ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                {esCocina ? <BellRing size={24} /> : <GlassWater size={24} />}
             </div>
-            <div className="ml-3 flex-1">
-              <p className="text-lg font-black text-gray-900">
-                {esCocina ? "¡NUEVA COMANDA!" : "¡BEBIDAS NUEVAS!"}
-              </p>
-              <p className="mt-1 text-sm text-gray-500 font-bold">
-                Mesa {p.sesion.mesa.nombre}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {p.items.length} items • {p.nombreCliente || "Cliente"}
-              </p>
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-gray-900 truncate">{titulo}</p>
+                <p className="text-sm text-gray-600 truncate">{texto}</p>
+                <p className="text-[10px] text-gray-400 mt-1 font-bold">CLICK PARA VER</p>
             </div>
-          </div>
         </div>
       </div>
-    ), { duration: 8000, position: 'top-right' });
+    ), { duration: 5000, position: 'top-right' });
   };
 
-  return null; // Este componente no renderiza nada visualmente en el DOM
+  return null;
 }
