@@ -1,75 +1,93 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import toast from "react-hot-toast";
+import { KeyRound, ArrowRight, Mail } from "lucide-react"; // Agregamos ícono Mail
 
 export default function LoginPage() {
+  // Ahora guardamos email y password
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    if (!formData.email || !formData.password) {
+      return toast.error("Completá todos los datos");
+    }
 
+    setLoading(true);
+    // Enviamos email y password a la API
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(formData),
     });
 
     if (res.ok) {
-      router.push("/admin"); // 🚀 Si está bien, nos manda al admin
+      toast.success("¡Bienvenido, Jefe! 🚀");
+      router.push("/admin");
     } else {
-      setError("Email o contraseña incorrectos");
+      toast.error("Datos incorrectos 🚫");
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-600 to-red-900 p-4">
+      <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300">
+        
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-slate-800">KARTA APP 🍔</h1>
-          <p className="text-slate-500">Acceso administrativo</p>
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+            <Image src="/karta-logo.png" alt="Karta" width={50} height={50} className="object-contain" />
+          </div>
+          <h1 className="text-2xl font-black text-gray-800 tracking-tight">KARTA ADMIN</h1>
+          <p className="text-gray-400 text-sm mt-1">Panel de Gestión</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Email</label>
-            <input 
-              type="email" 
-              required
-              className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
-              placeholder="admin@karta.com"
-              value={form.email}
-              onChange={(e) => setForm({...form, email: e.target.value})}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Contraseña</label>
-            <input 
-              type="password" 
-              required
-              className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-900"
-              placeholder="••••••"
-              value={form.password}
-              onChange={(e) => setForm({...form, password: e.target.value})}
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-100 text-red-600 p-3 rounded-lg text-sm text-center font-bold">
-              {error}
+        <form onSubmit={handleLogin} className="space-y-4">
+          
+          {/* CAMPO EMAIL */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <Mail size={20} />
             </div>
-          )}
+            <input
+              type="email"
+              placeholder="tu@email.com"
+              className="w-full pl-10 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 font-bold text-gray-700"
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+            />
+          </div>
 
-          <button 
-            type="submit" 
-            className="w-full bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-700 transition-colors"
+          {/* CAMPO PASSWORD */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <KeyRound size={20} />
+            </div>
+            <input
+              type="password"
+              placeholder="Contraseña"
+              className="w-full pl-10 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 font-bold text-gray-700"
+              value={formData.password}
+              onChange={(e) => setFormData({...formData, password: e.target.value})}
+            />
+          </div>
+
+          <button
+            disabled={loading}
+            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
           >
-            INGRESAR
+            {loading ? "Entrando..." : "Iniciar Sesión"}
+            {!loading && <ArrowRight size={20} />}
           </button>
         </form>
+
+        <div className="mt-8 text-center">
+          <p className="text-xs text-gray-300 uppercase tracking-widest font-semibold">Sistema Privado</p>
+        </div>
       </div>
     </div>
   );

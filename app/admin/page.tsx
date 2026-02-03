@@ -1,67 +1,84 @@
 "use client";
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+import { 
+  RefreshCcw, 
+  Filter, 
+  Clock, 
+  DollarSign, 
+  Store 
+} from "lucide-react";
 
 export default function AdminDashboard() {
   const [mesas, setMesas] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
-  const router = useRouter();
   
-  // --- NUEVO: ESTADOS PARA FILTRO ---
+  // Filtros
   const [sectores, setSectores] = useState<any[]>([]);
   const [filtroSector, setFiltroSector] = useState("Todos");
-  
-  // Función para traer los datos del estado actual
-  const cargarDatos = async () => {
+
+  // --- CARGA DE DATOS ---
+  const cargarDatos = async (silencioso = false) => {
+    if (!silencioso) setCargando(true);
     try {
       const res = await fetch("/api/admin/estado");
       const data = await res.json();
       setMesas(data);
     } catch (e) {
-      console.error("Error cargando dashboard:", e);
+      console.error(e);
+      if (!silencioso) toast.error("Error de conexión");
     } finally {
-      setCargando(false);
+      if (!silencioso) setCargando(false);
     }
   };
 
-  // Cargar lista de sectores para el filtro
   const cargarSectores = async () => {
     try {
       const res = await fetch("/api/admin/sectores");
       if (res.ok) setSectores(await res.json());
     } catch (e) {
-      console.error("Error cargando sectores:", e);
+      console.error(e);
     }
   };
 
-  // Auto-refresh: Se actualiza solo cada 10 segundos
   useEffect(() => {
     cargarDatos();
-    cargarSectores(); // Cargamos los sectores al inicio
-    const intervalo = setInterval(cargarDatos, 10000);
+    cargarSectores();
+    const intervalo = setInterval(() => cargarDatos(true), 10000); // Auto-refresh silencioso
     return () => clearInterval(intervalo);
   }, []);
 
-  const cerrarSesion = async () => {
-    await fetch("/api/logout", { method: "POST" });
-    router.push("/login"); // Nos manda al login
+  // --- LÓGICA DE COBRO CON TOAST CUSTOM ---
+  const solicitarCierre = (sesionId: number, nombre: string, total: number) => {
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[250px]">
+        <div>
+          <h4 className="font-bold text-gray-800">¿Cerrar {nombre}?</h4>
+          <p className="text-sm text-gray-500">Total a cobrar: <b className="text-green-600">${total}</b></p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              ejecutarCierre(sesionId);
+            }}
+            className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-black transition-colors"
+          >
+            CONFIRMAR
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-xs font-bold hover:bg-gray-200 transition-colors"
+          >
+            CANCELAR
+          </button>
+        </div>
+      </div>
+    ), { duration: 8000, icon: '💸' });
   };
 
-  // Función para cobrar y cerrar mesa
-  const cerrarMesa = async (
-    sesionId: number,
-    nombre: string,
-    total: number,
-  ) => {
-    const confirmacion = window.confirm(
-      `¿Cerrar mesa ${nombre}?\n\n💰 TOTAL A COBRAR: $${total}`,
-    );
-    if (!confirmacion) return;
-
-    // Ponemos la mesa en estado de "cargando" visualmente
-    setCargando(true);
-
+  const ejecutarCierre = async (sesionId: number) => {
+    const toastId = toast.loading("Procesando pago...");
     try {
       const res = await fetch("/api/admin/cerrar", {
         method: "POST",
@@ -70,108 +87,71 @@ export default function AdminDashboard() {
       });
 
       if (res.ok) {
-        alert("✅ Mesa cerrada y cobrada correctamente.");
-        cargarDatos(); // Recargar datos frescos
+        toast.success("¡Mesa cobrada! 💰", { id: toastId });
+        cargarDatos(true);
       } else {
-        alert("❌ Error al cerrar la mesa.");
-        setCargando(false);
+        toast.error("Error al cerrar mesa", { id: toastId });
       }
     } catch (error) {
-      alert("❌ Error de conexión");
-      setCargando(false);
+      toast.error("Error de red", { id: toastId });
     }
   };
 
-  // --- LÓGICA DE FILTRADO ---
+  // --- FILTRADO ---
   const mesasFiltradas = filtroSector === "Todos" 
     ? mesas 
     : mesas.filter(m => m.sector === filtroSector);
 
+  // --- RENDER ---
   return (
-    <div className="min-h-screen bg-slate-100 p-4 pb-20">
-      {/* Encabezado */}
-      <header className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+    <div className="space-y-6">
+      
+      {/* BARRA SUPERIOR (Título y Filtros) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-            CONTROL
-          </h1>
-          <p className="text-slate-500 text-sm">
-            {cargando ? "Actualizando..." : `Estado del salón (${mesasFiltradas.length} mesas)`}
+          <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
+            <Store className="text-red-600" size={24} />
+            Control de Salón
+          </h2>
+          <p className="text-xs text-gray-400 font-medium mt-1">
+            {cargando ? "Sincronizando..." : `${mesasFiltradas.length} mesas activas`}
           </p>
         </div>
 
-        {/* Botonera de Acciones */}
-        <div className="flex gap-2 flex-wrap items-center">
-          {/* --- SELECTOR DE FILTRO --- */}
-          <select 
-            className="bg-white border border-slate-300 text-slate-700 font-bold py-2 px-3 rounded-lg shadow-sm outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            value={filtroSector}
-            onChange={(e) => setFiltroSector(e.target.value)}
-          >
-            <option value="Todos">🏗️ Todos los sectores</option>
-            {sectores.map(s => (
-              <option key={s.id} value={s.nombre}>{s.nombre}</option>
-            ))}
-          </select>
+        <div className="flex gap-3">
+          {/* Selector de Sector */}
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <Filter size={16} />
+            </div>
+            <select 
+              className="pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 appearance-none cursor-pointer hover:bg-gray-100 transition-colors"
+              value={filtroSector}
+              onChange={(e) => setFiltroSector(e.target.value)}
+            >
+              <option value="Todos">Todos los sectores</option>
+              {sectores.map(s => (
+                <option key={s.id} value={s.nombre}>{s.nombre}</option>
+              ))}
+            </select>
+          </div>
 
-          <div className="h-8 w-px bg-slate-300 mx-2 hidden md:block"></div>
-
-          <Link
-            href="/admin/productos"
-            className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
-          >
-            🍔 Productos
-          </Link>
-
-          <Link
-            href="/admin/historial"
-            className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
-          >
-            💰 Historial
-          </Link>
-          <Link
-            href="/admin/qr"
-            className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm active:scale-95 text-sm"
-          >
-            📱 QRs Mesas
-          </Link>
-          <Link
-            href="/admin/cocina"
-            className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
-          >
-            🍳 Cocina
-          </Link>
-          <Link
-            href="/admin/categorias"
-            className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm active:scale-95 text-sm"
-          >
-            📑 Categorías
-          </Link>
-          <Link
-            href="/admin/mesas"
-            className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-sm active:scale-95 text-sm"
-          >
-            🍽️ Mesas
-          </Link>
+          {/* Botón Refrescar */}
           <button
-            onClick={cargarDatos}
-            className="bg-white border border-slate-300 px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 active:scale-95 transition-transform font-bold text-slate-600"
+            onClick={() => cargarDatos()}
+            className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95"
+            title="Actualizar datos"
           >
-            🔄
-          </button>
-          <button
-            onClick={cerrarSesion}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 shadow-sm transition-transform active:scale-95"
-          >
-            🚪 Cerrar Sesión
+            <RefreshCcw size={20} className={cargando ? "animate-spin" : ""} />
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* Grilla de Mesas */}
-      {cargando && mesas.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 animate-pulse">
-          Cargando estado...
+      {/* GRILLA DE MESAS */}
+      {mesasFiltradas.length === 0 && !cargando ? (
+        <div className="text-center py-20 opacity-50">
+          <Store size={48} className="mx-auto mb-4 text-gray-300" />
+          <p className="text-gray-500 font-medium">No hay mesas en este sector</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -179,70 +159,66 @@ export default function AdminDashboard() {
             <div
               key={mesa.id}
               className={`
-                relative p-5 rounded-xl border-l-8 shadow-md transition-all duration-300
-                ${
-                  mesa.estado === "OCUPADA"
-                    ? "bg-white border-red-500 shadow-red-100 transform hover:-translate-y-1"
-                    : "bg-slate-50 border-green-400 opacity-70"
+                relative p-5 rounded-2xl border transition-all duration-300 group
+                ${mesa.estado === "OCUPADA"
+                  ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                  : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
                 }
               `}
             >
-              {/* Info Principal */}
+              {/* Header Card */}
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-slate-800">
+                  <h3 className="text-lg font-black text-gray-800 leading-tight">
                     {mesa.nombre}
                   </h3>
-                  <span className="text-xs font-bold text-slate-400 uppercase">
-                    {mesa.sector || "Sin sector"}
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    {mesa.sector || "General"}
                   </span>
                 </div>
-                <span
-                  className={`text-xs font-bold px-2 py-1 rounded text-white ${mesa.estado === "OCUPADA" ? "bg-red-500" : "bg-green-500"}`}
-                >
+                <span className={`
+                  px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide
+                  ${mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}
+                `}>
                   {mesa.estado}
                 </span>
               </div>
 
-              {/* Detalles si está ocupada */}
+              {/* Contenido Card */}
               {mesa.estado === "OCUPADA" ? (
                 <>
                   <div className="space-y-3 mb-6">
-                    <div className="flex justify-between text-sm text-slate-500">
-                      <span>Inicio:</span>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <Clock size={14} className="text-gray-400" />
                       <span>
-                        {new Date(mesa.horaInicio).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {new Date(mesa.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
+                      {mesa.ultimoPedido && (
+                        <span className="ml-auto bg-gray-50 px-2 py-0.5 rounded text-[10px] text-gray-400 truncate max-w-[80px]">
+                          + {mesa.ultimoPedido}
+                        </span>
+                      )}
                     </div>
-                    {mesa.ultimoPedido && (
-                      <div className="text-xs text-slate-400 truncate bg-slate-100 p-1 rounded">
-                        Último: {mesa.ultimoPedido}
+                    
+                    <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
+                      <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
+                      <div className="flex items-center text-gray-900">
+                        <DollarSign size={16} className="text-gray-400" strokeWidth={3} />
+                        <span className="text-2xl font-black">{mesa.totalActual}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-slate-200">
-                      <span className="font-medium text-slate-600">Total:</span>
-                      <span className="text-3xl font-black text-slate-900">
-                        ${mesa.totalActual}
-                      </span>
                     </div>
                   </div>
 
-                  {/* Botón de Cobrar */}
                   <button
-                    onClick={() =>
-                      cerrarMesa(mesa.sesionId, mesa.nombre, mesa.totalActual)
-                    }
-                    className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg shadow-lg hover:bg-slate-800 active:scale-95 transition-transform flex justify-center items-center gap-2"
+                    onClick={() => solicitarCierre(mesa.sesionId, mesa.nombre, mesa.totalActual)}
+                    className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold shadow-md hover:bg-black active:scale-95 transition-all flex items-center justify-center gap-2 group-hover:shadow-lg"
                   >
-                    <span>💸 COBRAR</span>
+                    <span>COBRAR</span>
                   </button>
                 </>
               ) : (
-                <div className="h-24 flex items-center justify-center text-slate-400 text-sm italic border-2 border-dashed border-slate-200 rounded-lg">
-                  Disponible
+                <div className="h-24 flex flex-col items-center justify-center text-gray-300 gap-2">
+                  <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
                 </div>
               )}
             </div>
