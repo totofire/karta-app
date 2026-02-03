@@ -1,27 +1,26 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+// middleware.ts - CREAR EN LA RAÍZ
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // 1. Obtenemos la cookie de sesión
-  const sesion = request.cookies.get("admin_session");
-  const url = request.nextUrl.clone();
+  const session = request.cookies.get('admin_session');
+  const { pathname } = request.nextUrl;
 
-  // 2. Si intenta entrar al admin O a la cocina y NO tiene sesión...
-  if ((url.pathname.startsWith("/admin") || url.pathname.startsWith("/cocina")) && !sesion) {
-    // ...lo mandamos al login
-    return NextResponse.redirect(new URL("/login", request.url));
+  // Proteger rutas admin
+  if (pathname.startsWith('/admin')) {
+    if (!session || session.value !== 'true') {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
   }
 
-  // 3. Si ya tiene sesión y quiere ir al login...
-  if (url.pathname === "/login" && sesion) {
-    // ...lo mandamos directo al admin (ya está logueado)
-    return NextResponse.redirect(new URL("/admin", request.url));
+  // Redirigir de login a admin si ya está logueado
+  if (pathname === '/login' && session?.value === 'true') {
+    return NextResponse.redirect(new URL('/admin', request.url));
   }
 
   return NextResponse.next();
 }
 
-// Configuración: A qué rutas afecta este patovica
 export const config = {
-  matcher: ["/admin/:path*", "/cocina/:path*", "/login"],
+  matcher: ['/admin/:path*', '/login'],
 };

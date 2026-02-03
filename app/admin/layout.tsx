@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Tags, 
-  GlassWater,// <--- 1. Importamos el ícono nuevo
+  GlassWater // <--- Ícono para la barra
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -24,10 +24,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const menuItems = [
     { name: "Panel General", href: "/admin", icon: LayoutDashboard },
     { name: "Cocina en Vivo", href: "/admin/cocina", icon: ChefHat },
-    { name: "Barra / Bebidas", href: "/admin/barra", icon: GlassWater },
+    { name: "Barra / Bebidas", href: "/admin/barra", icon: GlassWater }, // <--- Nuevo ítem de Barra
     { name: "Mesas y Zonas", href: "/admin/mesas", icon: Armchair },
-    { name: "Productos y Carta", href: "/admin/productos", icon: UtensilsCrossed },
     { name: "Categorías", href: "/admin/categorias", icon: Tags },
+    { name: "Productos y Carta", href: "/admin/productos", icon: UtensilsCrossed },
     { name: "Códigos QR", href: "/admin/qr", icon: QrCode },
     { name: "Historial Ventas", href: "/admin/historial", icon: History },
   ];
@@ -35,10 +35,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-gray-50 flex transition-all duration-300">
       
-      {/* SIDEBAR */}
+      {/* SIDEBAR (Oculto al imprimir) */}
       <aside 
         className={`
-          bg-white border-r border-gray-200 hidden md:flex flex-col fixed inset-y-0 z-50 transition-all duration-300 ease-in-out
+          bg-white border-r border-gray-200 hidden md:flex flex-col fixed inset-y-0 z-50 transition-all duration-300 ease-in-out print:hidden
           ${isSidebarOpen ? "w-64" : "w-20"} 
         `}
       >
@@ -48,10 +48,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Abierto: Icono + Marca */}
           <div className={`flex items-center gap-3 overflow-hidden transition-all duration-300 ${isSidebarOpen ? "opacity-100 w-auto" : "opacity-0 w-0"}`}>
              <div className="relative w-8 h-8 flex-shrink-0">
-               <Image src="/logo-carga.png" alt="Icono" fill className="object-contain" />
+               <Image 
+                 src="/logo-carga.png" 
+                 alt="Icono" 
+                 fill 
+                 className="object-contain" 
+                 sizes="32px"
+               />
              </div>
              <div className="relative w-24 h-8">
-               <Image src="/logo2.png" alt="KARTA" fill className="object-contain object-left" priority />
+               <Image 
+                 src="/logo2.png" 
+                 alt="KARTA" 
+                 fill 
+                 className="object-contain object-left" 
+                 priority 
+                 sizes="100px"
+               />
              </div>
           </div>
 
@@ -59,13 +72,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {!isSidebarOpen && (
              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                <div className="relative w-10 h-10">
-                 <Image src="/logo-carga.png" alt="K" fill className="object-contain" />
+                 <Image 
+                   src="/logo-carga.png" 
+                   alt="K" 
+                   fill 
+                   className="object-contain" 
+                   sizes="40px"
+                 />
                </div>
              </div>
           )}
         </div>
 
-        {/* Botón Flotante */}
+        {/* Botón Flotante para Colapsar */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute -right-3 top-20 bg-white border border-gray-200 rounded-full p-1 shadow-md hover:bg-gray-50 z-50 hidden md:flex"
@@ -98,7 +117,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   {item.name}
                 </span>
 
-                {/* TOOLTIP FLOTANTE */}
+                {/* TOOLTIP FLOTANTE (Solo visible cerrado) */}
                 {!isSidebarOpen && (
                   <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
                     {item.name}
@@ -139,17 +158,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* CONTENIDO PRINCIPAL */}
       <main 
         className={`
-          flex-1 p-4 md:p-8 transition-all duration-300 ease-in-out
+          flex-1 p-4 md:p-8 transition-all duration-300 ease-in-out print:ml-0 print:p-0
           ${isSidebarOpen ? "md:ml-64" : "md:ml-20"} 
         `}
       >
         {children}
       </main>
 
-      {/* BARRA MÓVIL */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-3 z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-         {/* Mostramos los primeros 5 ítems en móvil para que entren bien */}
-         {menuItems.slice(0, 5).map((item) => {
+      {/* BARRA MÓVIL (Solo visible en pantallas chicas, oculta al imprimir) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-3 z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] print:hidden">
+         {/* Mostramos los 5 ítems más relevantes para móvil */}
+         {menuItems.filter(i => ["/admin", "/admin/cocina", "/admin/barra", "/admin/mesas", "/admin/productos"].includes(i.href)).map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
             return (

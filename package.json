@@ -19,7 +19,8 @@
     "react-hot-toast": "^2.6.0",
     "react-qr-code": "^2.0.18",
     "sqlite3": "^5.1.7",
-    "swr": "^2.4.0"
+    "swr": "^2.4.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
