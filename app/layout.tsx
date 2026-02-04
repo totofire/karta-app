@@ -1,11 +1,17 @@
+// app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
-import { LoaderProvider } from "@/context/LoaderContext"; //
-import { Toaster } from "react-hot-toast"; // <--- IMPORTAR
+import { LoaderProvider } from "@/context/LoaderContext";
+import { Toaster } from "react-hot-toast";
 
+// 👇 ACÁ ESTÁ EL CAMBIO
 export const metadata: Metadata = {
   title: "Karta - Menú Digital",
   description: "Pedí rápido, comé rico.",
+  icons: {
+    icon: "/logo-karta.png",      // Usamos tu logo cuadrado que ya está en public
+    apple: "/logo-karta.png",     // Icono para accesos directos en iPhone/iPad
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -14,7 +20,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased bg-gray-50 text-gray-900">
         <LoaderProvider>
           {children}
-          {/* Agregamos el Toaster acá para que flote sobre todo */}
           <Toaster 
             position="top-center" 
             reverseOrder={false}
@@ -25,10 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 color: '#fff',
               },
               success: {
-                style: { background: '#DEF7EC', color: '#03543F' }, // Verde suave
+                style: { background: '#DEF7EC', color: '#03543F' },
               },
               error: {
-                style: { background: '#FDE8E8', color: '#9B1C1C' }, // Rojo suave
+                style: { background: '#FDE8E8', color: '#9B1C1C' },
               },
             }}
           />
