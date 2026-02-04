@@ -2,7 +2,8 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useLoader } from "@/context/LoaderContext";
-export default function MenuInterface({ mesa, categorias }: any) {
+
+export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
   // LÓGICA DE INTERFAZ (Estados)
   const [carrito, setCarrito] = useState<any>({});
   const [nombre, setNombre] = useState("");
@@ -66,7 +67,7 @@ export default function MenuInterface({ mesa, categorias }: any) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          mesaToken: mesa.qr_token, 
+          tokenEfimero: tokenEfimero, // <--- CAMBIO APLICADO: Usando tokenEfimero
           nombreCliente: nombre, 
           productos: items 
         }),

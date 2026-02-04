@@ -32,6 +32,9 @@ model Sesion {
   pedidos     Pedido[]
   nombreHost  String?
 
+  tokenEfimero String?   @unique  // Token rotativo único
+  expiraEn     DateTime?           // Cuándo expira este token
+
   // 🚀 ÍNDICE CRÍTICO
   @@index([mesaId, fechaFin]) // Para encontrar la sesión activa de una mesa al instante
 }

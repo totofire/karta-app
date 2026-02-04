@@ -1,75 +1,82 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
 import { prisma } from "@/lib/prisma";
+
+// Define el tipo para los productos que vienen del frontend
+interface ProductoRequest {
+  productoId: number;
+  cantidad: number;
+  observaciones?: string;
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { mesaToken, nombreCliente, productos } = body;
+    const { tokenEfimero, nombreCliente, productos } = body;
 
     // 1. VALIDACIÓN BÁSICA
-    if (!mesaToken || !productos || productos.length === 0) {
-      return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
+    if (!tokenEfimero || !productos || productos.length === 0) {
+      return NextResponse.json({ error: "Faltan datos del pedido" }, { status: 400 });
     }
 
-    // 2. BUSCAR LA MESA
-    const mesa = await prisma.mesa.findUnique({ where: { qr_token: mesaToken }});
-    if (!mesa) return NextResponse.json({ error: "Mesa incorrecta" }, { status: 404 });
-
-    // 3. LOGICA DE SESIÓN (Unir amigos)
-    // Buscamos si ya hay una sesión "Abierta" (sin fecha fin) en esta mesa
-    let sesion = await prisma.sesion.findFirst({
-      where: {
-        mesaId: mesa.id,
-        fechaFin: null 
-      }
+    // 2. BUSCAR SESIÓN
+    const sesion = await prisma.sesion.findUnique({
+      where: { tokenEfimero },
+      include: { mesa: true }
     });
 
-    // Si no hay nadie sentado (sesión cerrada o nueva), abrimos una
+    // 3. VALIDACIONES DE SEGURIDAD
     if (!sesion) {
-      sesion = await prisma.sesion.create({
-        data: { mesaId: mesa.id }
-      });
-      console.log(`✨ Nueva sesión creada en ${mesa.nombre}`);
-    } else {
-      console.log(`👥 Sumando pedido a sesión existente en ${mesa.nombre}`);
+      return NextResponse.json({ error: "Sesión inválida" }, { status: 403 });
+    }
+    if (sesion.fechaFin) {
+      return NextResponse.json({ error: "Mesa cerrada. Escaneá QR nuevo." }, { status: 410 });
+    }
+    if (sesion.expiraEn && sesion.expiraEn < new Date()) {
+      return NextResponse.json({ error: "Sesión expirada. Escaneá QR nuevo." }, { status: 410 });
     }
 
-    // 4. BUSCAR PRECIOS REALES (Seguridad)
-    // No confiamos en el precio que manda el celular (podrían hackearlo). Buscamos en la BD.
-    const idsProductos = productos.map((p: any) => p.productoId);
+    // 4. BUSCAR PRECIOS REALES
+    const idsProductos = productos.map((p: ProductoRequest) => p.productoId);
+    
     const productosDb = await prisma.producto.findMany({
       where: { id: { in: idsProductos } }
     });
 
-    // 5. ARMAR LOS ITEMS DEL PEDIDO
-    const itemsParaGuardar = productos.map((prodFront: any) => {
-      const infoReal = productosDb.find(p => p.id === prodFront.productoId);
+    // 5. ARMAR ITEMS
+    const itemsParaGuardar = productos.map((prodFront: ProductoRequest) => {
+      
+      // 🔥 CORRECCIÓN AQUÍ: Agregamos (p: any) para callar a TypeScript
+      const infoReal = productosDb.find((p: any) => p.id === prodFront.productoId);
+      
       return {
         productoId: prodFront.productoId,
         cantidad: prodFront.cantidad,
-        precio: infoReal ? infoReal.precio : 0, // Guardamos el precio histórico
-        observaciones: ""
+        precio: infoReal ? infoReal.precio : 0,
+        observaciones: prodFront.observaciones || ""
       };
     });
 
-    // 6. GUARDAR EL PEDIDO EN LA BASE DE DATOS
+    // 6. GUARDAR PEDIDO
     const nuevoPedido = await prisma.pedido.create({
       data: {
         sesionId: sesion.id,
         nombreCliente: nombreCliente || "Anónimo",
-        estado: "PENDIENTE", // Va a cocina
+        estado: "PENDIENTE",
         items: {
           create: itemsParaGuardar
         }
+      },
+      include: {
+        items: {
+          include: { producto: true }
+        } 
       }
     });
-
+  
     return NextResponse.json({ success: true, pedidoId: nuevoPedido.id });
 
   } catch (error) {
     console.error("Error al procesar pedido:", error);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
   }
 }

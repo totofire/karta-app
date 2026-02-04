@@ -1,54 +1,55 @@
-import { PrismaClient } from "@prisma/client";
-import { notFound } from "next/navigation";
-import MenuInterface from "./MenuInterface";
-
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
 
+// Este archivo ahora solo sirve para ESCANEAR y REDIRIGIR
 export default async function Page({
   params,
 }: {
   params: Promise<{ token: string }>;
 }) {
-  const { token } = await params;
+  const { token: qrToken } = await params;
 
-  // 🚀 OPTIMIZACIÓN: Ejecutamos las dos consultas en paralelo
-  const [mesa, categorias] = await Promise.all([
-    // Query 1: Mesa
-    prisma.mesa.findUnique({
-      where: { qr_token: token },
-      include: {
-        sesiones: {
-          where: { fechaFin: null },
-          take: 1,
-        },
+  // 1. Buscar la mesa por su QR FÍSICO (el pegado en la mesa)
+  const mesa = await prisma.mesa.findUnique({
+    where: { qr_token: qrToken },
+  });
+
+  if (!mesa) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <p className="text-red-600 font-bold text-xl">Mesa no encontrada 🚫</p>
+      </div>
+    );
+  }
+
+  // 2. Buscar si hay una sesión ACTIVA (abierta y no expirada)
+  let sesion = await prisma.sesion.findFirst({
+    where: {
+      mesaId: mesa.id,
+      fechaFin: null,           // 🔥 Que NO esté cerrada
+      expiraEn: { gte: new Date() }, // 🔥 Que NO haya expirado
+    },
+  });
+
+  // 3. Si NO existe sesión válida → CREAMOS UNA NUEVA
+  if (!sesion) {
+    const tokenEfimero = crypto.randomBytes(32).toString("hex");
+    // La sesión dura 4 horas (tiempo razonable para una cena larga)
+    const expiraEn = new Date(Date.now() + 4 * 60 * 60 * 1000); 
+
+    sesion = await prisma.sesion.create({
+      data: {
+        mesaId: mesa.id,
+        tokenEfimero,
+        expiraEn,
       },
-    }),
+    });
+    console.log(`✨ Nueva sesión creada para ${mesa.nombre}`);
+  } else {
+    console.log(`♻️ Reutilizando sesión activa para ${mesa.nombre}`);
+  }
 
-    // Query 2: Categorías y Productos
-    prisma.categoria.findMany({
-      where: {
-        productos: { some: { activo: true } }, // Solo traemos categorías que tengan algo para vender
-      },
-      include: {
-        productos: {
-          where: { activo: true },
-          orderBy: { orden: "asc" },
-        },
-      },
-      orderBy: { orden: "asc" },
-    }),
-  ]);
-
-  if (!mesa) return notFound();
-
-  // Obtenemos el host si existe
-  const nombreHost = mesa.sesiones[0]?.nombreHost || null;
-
-  return (
-    <MenuInterface
-      mesa={mesa}
-      categorias={categorias}
-      hostInicial={nombreHost}
-    />
-  );
+  // 4. Redirigir a la NUEVA página de pedido con el token seguro
+  redirect(`/pedido?tk=${sesion.tokenEfimero}`);
 }
