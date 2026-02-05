@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma"; // Usamos el cliente optimizado
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = 'force-dynamic';
 
 export async function PATCH(
   request: Request,
@@ -9,7 +11,7 @@ export async function PATCH(
   const body = await request.json();
 
   try {
-    // 1. Creamos un objeto dinámico SOLO con lo que vamos a cambiar
+    // Creamos un objeto dinámico SOLO con lo que vamos a cambiar
     const datosAActualizar: any = {};
 
     // Solo si mandaron nombre, lo agregamos
@@ -35,7 +37,12 @@ export async function PATCH(
         datosAActualizar.categoriaId = Number(body.categoriaId);
     }
 
-    // 2. Actualizamos solo esos campos
+    // ✅ Solo si mandaron imagen, la agregamos
+    if (body.imagen !== undefined) {
+        datosAActualizar.imagen = body.imagen;
+    }
+
+    // Actualizamos solo esos campos
     const productoActualizado = await prisma.producto.update({
       where: { id: Number(id) },
       data: datosAActualizar,
@@ -48,7 +55,6 @@ export async function PATCH(
   }
 }
 
-// DELETE: Dejalo igual, funciona bien
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -60,6 +66,7 @@ export async function DELETE(
     });
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Error al eliminar producto:", error);
     return NextResponse.json({ error: "No se pudo borrar" }, { status: 500 });
   }
 }

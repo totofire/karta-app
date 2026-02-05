@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma"; // Asegurate que la ruta a prisma sea correcta
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 export const dynamic = 'force-dynamic';
 
-// Validación
+// Validación con Zod (incluyendo imagen)
 const productoSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
   precio: z.number().min(0, "El precio no puede ser negativo"),
   categoriaId: z.number().int().positive("Categoría inválida"),
   descripcion: z.string().optional(),
+  imagen: z.string().url("La URL de imagen no es válida").optional().nullable(),
   activo: z.boolean().default(true),
 });
 
-// GET: Traer productos
+// GET: Traer productos con imágenes
 export async function GET() {
   try {
     const categorias = await prisma.categoria.findMany({
@@ -26,16 +27,17 @@ export async function GET() {
     });
     return NextResponse.json(categorias);
   } catch (error) {
+    console.error("Error en GET productos:", error);
     return NextResponse.json({ error: "Error cargando productos" }, { status: 500 });
   }
 }
 
-// POST: Crear producto
+// POST: Crear producto con imagen
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // Validar
+    // Validar con Zod
     const resultado = productoSchema.safeParse(body);
 
     if (!resultado.success) {
@@ -44,13 +46,14 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Crear
+    // Crear producto con imagen
     const nuevoProducto = await prisma.producto.create({
       data: {
         nombre: resultado.data.nombre,
         precio: resultado.data.precio,
         categoriaId: resultado.data.categoriaId,
         descripcion: resultado.data.descripcion || "",
+        imagen: resultado.data.imagen || null,
         activo: resultado.data.activo,
       }
     });
