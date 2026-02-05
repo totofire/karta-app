@@ -144,38 +144,29 @@ export default function NotificationListener() {
   };
 
   // Prompt para habilitar el audio - VERSIÓN RESPONSIVE
+ // UI para activar audio (Estilo mantenido)
   if (showAudioPrompt) {
     return (
-      <div className="fixed bottom-20 md:bottom-4 left-4 right-4 md:left-auto md:right-4 z-[60] md:max-w-sm">
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/20 flex items-center justify-center">
-              <Volume2 size={20} className="md:w-6 md:h-6" />
+      <div className="fixed bottom-4 right-4 z-[9999] animate-in slide-in-from-bottom-10">
+        <div className="bg-slate-900 text-white p-4 rounded-xl shadow-2xl max-w-xs border border-slate-700">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-green-500 rounded-full animate-pulse">
+                <Volume2 size={20} className="text-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-sm md:text-base mb-1">Activar sonido de pedidos</h3>
-              <p className="text-xs md:text-sm text-green-50 mb-3 leading-relaxed">
-                Toca el botón para recibir alertas sonoras cuando lleguen nuevos pedidos.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  onClick={habilitarAudio}
-                  className="bg-white text-green-600 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-green-50 transition-all active:scale-95 shadow-md flex-1 sm:flex-initial"
-                >
-                  ✓ Activar ahora
-                </button>
-                <button
-                  onClick={() => setShowAudioPrompt(false)}
-                  className="bg-white/10 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all active:scale-95 backdrop-blur-sm"
-                >
-                  Más tarde
-                </button>
-              </div>
+            <div>
+                <h3 className="font-bold text-sm">Activar Alertas</h3>
+                <p className="text-xs text-slate-400">Sonido para nuevos pedidos</p>
             </div>
           </div>
+          <button
+            onClick={habilitarAudio}
+            className="w-full bg-white text-slate-900 py-2 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors"
+          >
+            Activar Sonido
+          </button>
         </div>
       </div>
-    );s
+    );
   }
 
   return null;

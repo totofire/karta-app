@@ -1,7 +1,8 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
+import Link from "next/link";
 import { 
   RefreshCcw, 
   Filter, 
@@ -12,16 +13,20 @@ import {
   CheckCircle2, 
   X, 
   HandCoins,
-  Map,        // Icono Mapa
-  LayoutGrid  // Icono Lista
+  Map,        
+  LayoutGrid,
+  PenTool 
 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
-  const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); // Estado para el modal
-  const [vistaMapa, setVistaMapa] = useState(false); // <--- ESTADO PARA EL SWITCH
+  const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); 
+  const [vistaMapa, setVistaMapa] = useState(false);
+
+  // Referencia para saber qué mesas ya notificamos y no repetir el sonido
+  const mesasNotificadas = useRef<Set<number>>(new Set());
 
   // Data fetching
   const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
@@ -30,7 +35,43 @@ export default function AdminDashboard() {
   });
   const { data: sectores = [] } = useSWR('/api/admin/sectores', fetcher);
 
-  // --- FUNCIÓN DE IMPRESIÓN (TICKET DE CIERRE) ---
+  // --- LÓGICA DE SONIDO (RINGTONE) 🔊 ---
+  useEffect(() => {
+    if (!mesas || mesas.length === 0) return;
+
+    let sonar = false;
+    const mesasPidiendoAhora = new Set<number>();
+
+    mesas.forEach((mesa: any) => {
+        if (mesa.solicitaCuenta) {
+            mesasPidiendoAhora.add(mesa.id);
+            
+            // Si esta mesa pide cuenta Y NO la teníamos registrada como notificada
+            if (!mesasNotificadas.current.has(mesa.id)) {
+                sonar = true;
+            }
+        }
+    });
+
+    if (sonar) {
+        // Reproducir sonido
+        const audio = new Audio("/sounds/ding.mp3");
+        audio.play().catch(e => console.log("El navegador bloqueó el autoplay hasta que hagas clic en la página"));
+        
+        // Notificación visual extra
+        toast("🔔 ¡Una mesa pide la cuenta!", { 
+            icon: "💸",
+            duration: 4000,
+            style: { border: '1px solid #EAB308', color: '#713F12' }
+        });
+    }
+
+    // Actualizamos la referencia para la próxima vuelta
+    mesasNotificadas.current = mesasPidiendoAhora;
+
+  }, [mesas]); // Se ejecuta cada vez que SWR trae datos nuevos
+
+  // --- FUNCIÓN DE IMPRESIÓN ---
   const imprimirTicketCierre = (mesa: any) => {
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
@@ -71,10 +112,7 @@ export default function AdminDashboard() {
                         <span>$${mesa.totalActual}</span>
                     </div>
 
-                    <div class="footer">
-                        NO VALIDO COMO FACTURA<br/>
-                        GRACIAS POR SU VISITA
-                    </div>
+                    <div class="footer">NO VALIDO COMO FACTURA<br/>GRACIAS POR SU VISITA</div>
                 </body>
             </html>
         `);
@@ -85,10 +123,9 @@ export default function AdminDashboard() {
     }
   };
 
-  // --- LÓGICA DE COBRO (CIERRE DEFINITIVO) ---
+  // --- COBRO ---
   const ejecutarCierre = async () => {
     if (!mesaParaCobrar) return;
-    
     const toastId = toast.loading("Cerrando mesa...");
     try {
       const res = await fetch("/api/admin/cerrar", {
@@ -98,9 +135,9 @@ export default function AdminDashboard() {
       });
 
       if (res.ok) {
-        toast.success("Mesa cerrada correctamente 💰", { id: toastId });
+        toast.success("Mesa cerrada 💰", { id: toastId });
         mutate(); 
-        setMesaParaCobrar(null); // Cerrar modal
+        setMesaParaCobrar(null);
       } else {
         toast.error("Error al cerrar", { id: toastId });
       }
@@ -132,7 +169,15 @@ export default function AdminDashboard() {
 
         <div className="flex gap-3 items-center">
           
-          {/* BOTÓN SWITCH VISTA (LISTA vs MAPA) */}
+          <Link href="/admin/mesas/mapa">
+            <button 
+                className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors shadow-sm group"
+                title="Editar distribución de mesas"
+            >
+                <PenTool size={18} className="group-hover:scale-110 transition-transform" />
+            </button>
+          </Link>
+
           <button 
             onClick={() => setVistaMapa(!vistaMapa)}
             className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-bold flex gap-2 items-center text-gray-700 transition-colors shadow-sm"
@@ -161,39 +206,35 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* CONTENIDO PRINCIPAL (CONDICIONAL) */}
+      {/* CONTENIDO PRINCIPAL */}
       {vistaMapa ? (
         
         /* --- VISTA MAPA --- */
         <div className="relative w-full h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-hidden">
-            {/* Fondo decorativo (Grilla suave) */}
             <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
             
             {mesasFiltradas.map((mesa: any) => (
                 <div
                     key={mesa.id}
-                    // IMPORTANTE: Aquí usamos las coordenadas guardadas
                     style={{ transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)` }} 
                     className="absolute transition-all duration-500 ease-in-out" 
                 >
                     <div 
-                        // Solo abre el modal si está ocupada
                         onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
                         className={`
                             w-24 h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
                             ${mesa.solicitaCuenta 
-                                ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" // DESTACADO MÁXIMO
+                                ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" 
                                 : mesa.estado === "OCUPADA" 
-                                    ? "border-red-500 text-red-600 z-10" 
-                                    : "border-gray-300 text-gray-400 opacity-60"
+                                    ? "bg-white border-red-500 text-red-600 z-10" 
+                                    : "bg-gray-50 border-gray-300 text-gray-400 opacity-60"
                             }
                         `}
                     >
-                        {/* ALERTA FLOTANTE EN EL MAPA */}
                         {mesa.solicitaCuenta && (
                             <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
                                 <HandCoins size={14} />
-                                ¡CUENTA!
+                                PIDE CUENTA
                             </div>
                         )}
 
@@ -211,7 +252,7 @@ export default function AdminDashboard() {
 
       ) : (
 
-        /* --- VISTA GRILLA (LISTA TRADICIONAL) --- */
+        /* --- VISTA GRILLA --- */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {mesasFiltradas.map((mesa: any) => (
             <div
@@ -219,7 +260,7 @@ export default function AdminDashboard() {
                 className={`
                 relative p-5 rounded-2xl border transition-all duration-300
                 ${mesa.solicitaCuenta 
-                    ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse" // DESTACADO MÁXIMO
+                    ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse" 
                     : mesa.estado === "OCUPADA"
                         ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
                         : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
@@ -238,7 +279,6 @@ export default function AdminDashboard() {
                 </span>
                 </div>
 
-                {/* AVISO GIGANTE SI PIDE CUENTA */}
                 {mesa.solicitaCuenta && (
                     <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
                         <HandCoins size={18} />
@@ -261,7 +301,6 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                     </div>
-                    {/* BOTÓN QUE ABRE EL MODAL */}
                     <button
                     onClick={() => setMesaParaCobrar(mesa)}
                     className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
@@ -285,46 +324,28 @@ export default function AdminDashboard() {
       {mesaParaCobrar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
-            
             <div className="bg-red-600 p-6 text-white text-center relative">
-                <button 
-                    onClick={() => setMesaParaCobrar(null)}
-                    className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
-                >
-                    <X size={20} />
-                </button>
+                <button onClick={() => setMesaParaCobrar(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={20} /></button>
                 <h3 className="text-2xl font-black uppercase tracking-tight">Mesa {mesaParaCobrar.nombre}</h3>
                 <p className="text-red-100 text-sm font-medium">Seleccioná una acción</p>
             </div>
-
             <div className="p-8 space-y-6">
                 <div className="text-center">
                     <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Total a cobrar</span>
                     <div className="text-5xl font-black text-gray-900 mt-2">${mesaParaCobrar.totalActual}</div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
-                    <button 
-                        onClick={() => imprimirTicketCierre(mesaParaCobrar)}
-                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group"
-                    >
+                    <button onClick={() => imprimirTicketCierre(mesaParaCobrar)} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group">
                         <Printer size={32} className="text-gray-400 group-hover:text-gray-600" />
                         <span className="font-bold text-gray-600 text-sm">Imprimir Ticket</span>
                     </button>
-
-                    <button 
-                        onClick={ejecutarCierre}
-                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group"
-                    >
+                    <button onClick={ejecutarCierre} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group">
                         <CheckCircle2 size={32} className="text-green-600 group-hover:scale-110 transition-transform" />
                         <span className="font-bold text-green-700 text-sm">Cerrar y Liberar</span>
                     </button>
                 </div>
             </div>
-            
-            <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium">
-                Al cerrar, la mesa quedará disponible para nuevos clientes.
-            </div>
+            <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium">Al cerrar, la mesa quedará disponible para nuevos clientes.</div>
           </div>
         </div>
       )}
