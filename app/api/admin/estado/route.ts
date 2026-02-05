@@ -18,8 +18,9 @@ export async function GET() {
           select: {
             id: true,
             fechaInicio: true,
+            solicitaCuenta: true, // <--- ¡AQUÍ ESTÁ LA CORRECCIÓN! (Agregamos esto)
             pedidos: {
-              where: { estado: { not: "CANCELADO" } }, // Excluimos cancelados si tienes ese estado
+              where: { estado: { not: "CANCELADO" } }, 
               select: {
                 fecha: true,
                 estado: true,
@@ -27,7 +28,7 @@ export async function GET() {
                   select: {
                     cantidad: true,
                     precio: true,
-                    producto: { // <--- ESTO ES NUEVO: Traemos el nombre para el ticket
+                    producto: { 
                         select: { nombre: true } 
                     }
                   }
@@ -55,12 +56,11 @@ export async function GET() {
           horaInicio: null,
           totalActual: 0,
           ultimoPedido: null,
-          detalles: [] // Array vacío para evitar errores en el front
+          detalles: [] 
         };
       }
 
-      // --- NUEVA LÓGICA DE AGRUPACIÓN PARA EL TICKET ---
-      // Usamos un Map para sumar cantidades de productos iguales pedidos en diferentes rondas
+      // --- LÓGICA DE AGRUPACIÓN PARA EL TICKET ---
       const mapaDetalles = new Map();
       let totalGeneral = 0;
 
@@ -88,7 +88,6 @@ export async function GET() {
         });
       });
 
-      // Convertimos el mapa a array para el frontend
       const detalles = Array.from(mapaDetalles.values());
 
       const ultimoPedido = sesionActiva.pedidos.length > 0
@@ -106,7 +105,8 @@ export async function GET() {
         horaInicio: sesionActiva.fechaInicio,
         totalActual: totalGeneral,
         ultimoPedido,
-        detalles: detalles // <--- Aquí va la lista lista para imprimir
+        detalles: detalles,
+        solicitaCuenta: sesionActiva.solicitaCuenta // Ahora TypeScript ya no se quejará
       };
     });
 

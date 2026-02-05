@@ -35,7 +35,7 @@ model Sesion {
 
   tokenEfimero String?   @unique  // Token rotativo único
   expiraEn     DateTime?           // Cuándo expira este token
-
+  solicitaCuenta DateTime?
   // 🚀 ÍNDICE CRÍTICO
   @@index([mesaId, fechaFin]) // Para encontrar la sesión activa de una mesa al instante
 }

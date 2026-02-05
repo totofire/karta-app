@@ -2,7 +2,8 @@
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import { useLoader } from "@/context/LoaderContext";
-import { Receipt, X, CheckCircle2 } from "lucide-react"; // Iconos necesarios
+import { Receipt, X, CheckCircle2 } from "lucide-react"; 
+import toast from "react-hot-toast";
 
 export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos }: any) {
   // --- ESTADOS Y LÓGICA ---
@@ -12,7 +13,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [verCuenta, setVerCuenta] = useState(false); // Modal de cuenta
   const { showLoader, hideLoader } = useLoader();
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
-
+  const [pidiendoCuenta, setPidiendoCuenta] = useState(false);
   // --- LÓGICA DE AGRUPACIÓN DE CUENTA ("Mi Cuenta") ---
   const { itemsHistoricos, totalHistorico } = useMemo(() => {
     const mapa = new Map();
@@ -47,6 +48,28 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
     };
   }, [pedidosHistoricos]);
 
+
+  const pedirCuenta = async () => {
+    setPidiendoCuenta(true);
+    try {
+        const res = await fetch("/api/pedidos/cuenta", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tokenEfimero }),
+        });
+
+        if (res.ok) {
+            toast.success("¡Listo! El mozo te trae la cuenta 💸");
+            setVerCuenta(false); // Cerramos el modal
+        } else {
+            toast.error("Error al solicitar cuenta");
+        }
+    } catch (e) {
+        toast.error("Error de conexión");
+    } finally {
+        setPidiendoCuenta(false);
+    }
+};
   // --- FUNCIÓN DE SCROLL ---
   const scrollearACategoria = (catId: number) => {
     setCategoriaActiva(catId);
@@ -365,6 +388,18 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
                     >
                         Seguir Pidiendo
                     </button>
+                    <button 
+            onClick={pedirCuenta}
+            disabled={pidiendoCuenta}
+            className="w-full bg-white text-green-600 border-2 border-green-500 font-bold py-3.5 rounded-xl active:scale-95 transition-transform hover:bg-green-50 flex items-center justify-center gap-2"
+        >
+            {pidiendoCuenta ? "Solicitando..." : (
+                <>
+                    <Receipt size={20} />
+                    PEDIR LA CUENTA
+                </>
+            )}
+        </button>
                 </div>
 
             </div>

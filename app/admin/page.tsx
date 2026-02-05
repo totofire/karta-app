@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import { 
-  RefreshCcw, Filter, Clock, DollarSign, Store, Printer, CheckCircle2, X 
+  RefreshCcw, Filter, Clock, DollarSign, Store, Printer, CheckCircle2, X, HandCoins 
 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -21,10 +21,6 @@ export default function AdminDashboard() {
 
   // --- FUNCIÓN DE IMPRESIÓN (TICKET DE CIERRE) ---
   const imprimirTicketCierre = (mesa: any) => {
-    // Si la API de estado no trae los items, quizás necesites hacer un fetch extra aquí.
-    // Asumiremos que 'mesa' trae un array 'items' o similar. 
-    // Si no, hay que ajustar el endpoint /api/admin/estado para que incluya los items resumidos.
-    
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
         ventana.document.write(`
@@ -51,7 +47,6 @@ export default function AdminDashboard() {
                     </div>
                     
                     <div class="items">
-                        ${/* Aquí iteramos los items si los tenemos. Si no, mostramos solo total */ ''}
                         ${mesa.detalles ? mesa.detalles.map((d: any) => `
                             <div class="item">
                                 <span>${d.cantidad} x ${d.producto}</span>
@@ -152,9 +147,11 @@ export default function AdminDashboard() {
             key={mesa.id}
             className={`
               relative p-5 rounded-2xl border transition-all duration-300
-              ${mesa.estado === "OCUPADA"
-                ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+              ${mesa.solicitaCuenta 
+                 ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse" 
+                 : mesa.estado === "OCUPADA"
+                    ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                    : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
               }
             `}
           >
@@ -163,10 +160,20 @@ export default function AdminDashboard() {
                 <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
               </div>
-              <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide ${mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
-                {mesa.estado}
+              <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide 
+                ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}
+              `}>
+                {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
               </span>
             </div>
+
+            {/* AVISO GIGANTE SI PIDE CUENTA */}
+            {mesa.solicitaCuenta && (
+                <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
+                    <HandCoins size={18} />
+                    ¡PIDE CUENTA!
+                </div>
+            )}
 
             {mesa.estado === "OCUPADA" ? (
               <>
@@ -186,7 +193,9 @@ export default function AdminDashboard() {
                 {/* BOTÓN QUE ABRE EL MODAL */}
                 <button
                   onClick={() => setMesaParaCobrar(mesa)}
-                  className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold shadow-md hover:bg-black active:scale-95 transition-all"
+                  className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
+                    ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}
+                  `}
                 >
                   COBRAR MESA
                 </button>
