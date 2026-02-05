@@ -4,22 +4,20 @@ import Image from "next/image";
 import { useLoader } from "@/context/LoaderContext";
 
 export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
-  // LÓGICA DE INTERFAZ (Estados)
+  // --- ESTADOS Y LÓGICA ---
   const [carrito, setCarrito] = useState<any>({});
   const [nombre, setNombre] = useState("");
   const [enviando, setEnviando] = useState(false);
   const { showLoader, hideLoader } = useLoader();
-  // Estado solo para resaltar el botón activo visualmente (opcional)
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
 
-  // --- NUEVA LÓGICA DE SCROLL ---
+  // --- FUNCIÓN DE SCROLL ---
   const scrollearACategoria = (catId: number) => {
     setCategoriaActiva(catId);
     const elemento = document.getElementById(`cat-${catId}`);
     
     if (elemento) {
-      // Calculamos el offset para que el Header pegajoso no tape el título
-      const headerOffset = 130; // Ajuste según la altura de tu header nuevo
+      const headerOffset = 130; 
       const elementPosition = elemento.getBoundingClientRect().top;
       const offsetPosition = elementPosition + window.scrollY - headerOffset;
   
@@ -30,7 +28,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
     }
   };
 
-  // Lógica para sumar/restar productos (Igual que antes)
+  // --- LÓGICA CARRITO ---
   const actualizarCantidad = (productoId: number, delta: number) => {
     setCarrito((prev: any) => {
       const actual = prev[productoId] || 0;
@@ -43,17 +41,16 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
     });
   };
 
-  // Lógica de Totales
   const totalItems = Object.values(carrito).reduce((a: number, b: any) => a + Number(b), 0);
   
   const precioTotal = categorias.flatMap((c: any) => c.productos).reduce((total: number, p: any) => {
     return total + (p.precio * (carrito[p.id] || 0));
   }, 0);
 
+  // --- ENVIAR PEDIDO ---
   const confirmarPedido = async () => {
     if (!nombre.trim()) return alert("¡Para! Decinos tu nombre para llamarte.");
     
-    // 1. Mostramos el loader de Karta antes de empezar
     showLoader(); 
     setEnviando(true);
 
@@ -67,7 +64,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          tokenEfimero: tokenEfimero, // <--- CAMBIO APLICADO: Usando tokenEfimero
+          tokenEfimero: tokenEfimero,
           nombreCliente: nombre, 
           productos: items 
         }),
@@ -78,13 +75,13 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
         setCarrito({});
         setNombre("");
       } else {
-        alert("Hubo un error al pedir. Llamá al mozo.");
+        const data = await res.json();
+        alert(data.error || "Hubo un error al pedir. Llamá al mozo.");
       }
     } catch (error) {
       console.error("Error de conexión:", error);
       alert("Error de conexión con el servidor.");
     } finally {
-      // 2. Ocultamos el loader al terminar la operación
       hideLoader();
       setEnviando(false);
     }
@@ -92,10 +89,9 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
-      {/* HEADER COMPACTO */}
+      
+      {/* --- HEADER --- */}
       <header className="bg-gradient-to-br from-red-600 to-red-700 text-white shadow-xl sticky top-0 z-20">
-        
-        {/* SECCIÓN SUPERIOR */}
         <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]"> 
           <div className="flex items-center gap-2 h-full">
             <div className="relative w-24 h-full min-h-[50px] drop-shadow-md">
@@ -116,12 +112,12 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
           </div>
         </div>
 
-        {/* CATEGORÍAS (Barra de Navegación) */}
+        {/* BARRA DE CATEGORÍAS */}
         <div className="flex gap-2 overflow-x-auto py-2 px-3 scrollbar-hide bg-red-700/50 backdrop-blur-sm">
           {categorias.map((cat: any) => (
             <button
               key={cat.id}
-              onClick={() => scrollearACategoria(cat.id)} // <--- AHORA HACE SCROLL
+              onClick={() => scrollearACategoria(cat.id)}
               className={`
                 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border
                 ${categoriaActiva === cat.id 
@@ -135,14 +131,13 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
         </div>
       </header>
 
-      {/* CARTA - TODOS LOS PRODUCTOS */}
+      {/* --- LISTADO DE PRODUCTOS --- */}
       <main className="p-4 space-y-8">
         {categorias.map((cat: any) => (
-            // IMPORTANTE: Quitamos el .filter() y agregamos el ID para el scroll
             <section 
               key={cat.id} 
-              id={`cat-${cat.id}`} // <--- ESTO ES EL ANCLA
-              className="scroll-mt-32" // Ayuda nativa de CSS para el scroll
+              id={`cat-${cat.id}`}
+              className="scroll-mt-32"
             >
               <div className="flex items-center gap-2 mb-4 sticky top-[120px] bg-gray-50/95 backdrop-blur-sm p-2 z-10 -mx-2 rounded-lg">
                 <div className="h-6 w-1 bg-red-600 rounded-full"></div>
@@ -151,33 +146,61 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
               
               <div className="grid gap-3">
                 {cat.productos.map((prod: any) => (
-                  <div key={prod.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-row justify-between items-center gap-4 relative overflow-hidden group hover:shadow-md transition-shadow">
+                  <div key={prod.id} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-row gap-3 relative overflow-hidden group hover:shadow-md transition-shadow h-[120px]">
                     
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-600 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    {/* Decoración Hover */}
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-600 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity z-10"></div>
                     
-                    <div className="flex-1 pl-1">
-                      <h3 className="font-bold text-base text-gray-900 leading-tight">{prod.nombre}</h3>
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{prod.descripcion}</p>
-                      <div className="flex items-baseline gap-1 mt-2">
-                        <span className="text-lg font-black text-red-600">${prod.precio}</span>
-                      </div>
+                    {/* --- FOTO DEL PRODUCTO --- */}
+                    <div className="relative w-[100px] h-full flex-shrink-0 bg-gray-50 rounded-xl overflow-hidden">
+                      {prod.imagen ? (
+                        <Image 
+                          src={prod.imagen} 
+                          alt={prod.nombre} 
+                          fill 
+                          className="object-cover" 
+                          sizes="100px"
+                        />
+                      ) : (
+                        /* Placeholder si no hay foto */
+                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex flex-col items-center gap-1.5 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                      <button 
-                        onClick={() => actualizarCantidad(prod.id, 1)} 
-                        className="w-9 h-9 bg-white text-red-600 font-bold rounded-lg shadow-sm text-lg active:scale-95 hover:bg-red-600 hover:text-white transition-all duration-150 border border-red-100"
-                      >+</button>
+                    {/* --- INFORMACIÓN Y CONTROLES --- */}
+                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
                       
-                      {carrito[prod.id] > 0 && (
-                        <>
-                          <span className="font-black text-gray-800 text-sm min-w-[20px] text-center">{carrito[prod.id]}</span>
+                      {/* Textos */}
+                      <div>
+                        <h3 className="font-bold text-sm text-gray-900 leading-tight truncate pr-1">{prod.nombre}</h3>
+                        <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
+                          {prod.descripcion || <span className="italic opacity-50">Sin descripción</span>}
+                        </p>
+                      </div>
+
+                      {/* Precio y Botones */}
+                      <div className="flex items-end justify-between mt-1">
+                        <span className="text-lg font-black text-red-600">${prod.precio}</span>
+
+                        <div className="flex items-center gap-1.5 bg-gray-50 p-1 rounded-lg border border-gray-100">
                           <button 
-                            onClick={() => actualizarCantidad(prod.id, -1)} 
-                            className="w-9 h-9 bg-white text-gray-500 font-bold rounded-lg shadow-sm text-lg active:scale-95 hover:bg-gray-100 transition-all duration-150 border border-gray-200"
-                          >−</button>
-                        </>
-                      )}
+                            onClick={() => actualizarCantidad(prod.id, 1)} 
+                            className="w-7 h-7 bg-white text-red-600 font-bold rounded-md shadow-sm text-lg active:scale-95 flex items-center justify-center border border-red-100 hover:bg-red-50 transition-colors"
+                          >+</button>
+                          
+                          {carrito[prod.id] > 0 && (
+                            <>
+                              <span className="font-black text-gray-800 text-xs min-w-[16px] text-center">{carrito[prod.id]}</span>
+                              <button 
+                                onClick={() => actualizarCantidad(prod.id, -1)} 
+                                className="w-7 h-7 bg-white text-gray-500 font-bold rounded-md shadow-sm text-lg active:scale-95 flex items-center justify-center border border-gray-200 hover:bg-gray-100 transition-colors"
+                              >−</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                   </div>
@@ -187,7 +210,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
           ))}
       </main>
 
-      {/* FOOTER FLOTANTE (Igual que antes) */}
+      {/* --- FOOTER FLOTANTE --- */}
       {totalItems > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
           <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
