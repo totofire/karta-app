@@ -96,13 +96,7 @@ export default function QRPage() {
                 />
               </div>
               
-              {/* Instrucción */}
-              <div className="mt-2">
-                <p className="text-sm font-bold text-slate-700">Escaneá para pedir 🍔</p>
-                <p className="text-[10px] text-gray-400 font-mono mt-1 print:text-black">
-                  karta.menu/mesa/{mesa.qr_token}
-                </p>
-              </div>
+             
 
             </div>
           ))}
