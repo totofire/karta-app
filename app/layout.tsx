@@ -1,10 +1,15 @@
 // app/layout.tsx
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next"; // <--- Importar Viewport
 import { LoaderProvider } from "@/context/LoaderContext";
 import { Toaster } from "react-hot-toast";
 
-// 👇 ACÁ ESTÁ EL CAMBIO
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Esto bloquea el zoom pellizcando
+};
 export const metadata: Metadata = {
   title: "Karta - Menú Digital",
   description: "Pedí rápido, comé rico.",

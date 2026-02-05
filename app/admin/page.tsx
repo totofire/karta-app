@@ -152,7 +152,7 @@ export default function AdminDashboard() {
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Filter size={16} /></div>
             <select 
-              className="pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base font-bold text-gray-700 outline-none cursor-pointer hover:bg-gray-100 transition-colors"
+              className="pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base md:text-sm font-bold text-gray-700 outline-none cursor-pointer hover:bg-gray-100 transition-colors"
               value={filtroSector}
               onChange={(e) => setFiltroSector(e.target.value)}
             >
