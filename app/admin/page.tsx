@@ -32,8 +32,6 @@ export default function AdminDashboard() {
   });
   const { data: sectores = [] } = useSWR('/api/admin/sectores', fetcher);
 
-  // ✅ ELIMINADA toda la lógica de sonido - ahora la manejan los Listeners
-
   // --- FUNCIÓN DE IMPRESIÓN ---
   const imprimirTicketCierre = (mesa: any) => {
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
@@ -116,7 +114,7 @@ export default function AdminDashboard() {
   }, [mesas, filtroSector]);
 
   return (
-    <div className="space-y-6 relative h-full flex flex-col">
+    <div className="space-y-6 relative h-full flex flex-col w-full max-w-[100vw] overflow-x-hidden">
       
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm z-20">
@@ -130,11 +128,11 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           
           <Link href="/admin/mesas/mapa">
             <button 
-                className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors shadow-sm group"
+                className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors shadow-sm group active:scale-95"
                 title="Editar distribución de mesas"
             >
                 <PenTool size={18} className="group-hover:scale-110 transition-transform" />
@@ -143,16 +141,16 @@ export default function AdminDashboard() {
 
           <button 
             onClick={() => setVistaMapa(!vistaMapa)}
-            className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-bold flex gap-2 items-center text-gray-700 transition-colors shadow-sm"
+            className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-bold flex gap-2 items-center text-gray-700 transition-colors shadow-sm active:scale-95"
           >
              {vistaMapa ? <LayoutGrid size={18}/> : <Map size={18}/>}
-             {vistaMapa ? "Ver Lista" : "Ver Mapa"}
+             <span className="hidden sm:inline">{vistaMapa ? "Ver Lista" : "Ver Mapa"}</span>
           </button>
 
-          <div className="relative group">
+          <div className="relative group flex-1 sm:flex-none">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Filter size={16} /></div>
             <select 
-              className="pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base md:text-sm font-bold text-gray-700 outline-none cursor-pointer hover:bg-gray-100 transition-colors"
+              className="w-full sm:w-auto pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base md:text-sm font-bold text-gray-700 outline-none cursor-pointer hover:bg-gray-100 transition-colors appearance-none"
               value={filtroSector}
               onChange={(e) => setFiltroSector(e.target.value)}
             >
@@ -173,7 +171,7 @@ export default function AdminDashboard() {
       {vistaMapa ? (
         
         /* --- VISTA MAPA --- */
-        <div className="relative w-full h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-hidden">
+        <div className="relative w-full h-[600px] md:h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-hidden">
             <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
             
             {mesasFiltradas.map((mesa: any) => (
@@ -185,7 +183,7 @@ export default function AdminDashboard() {
                     <div 
                         onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
                         className={`
-                            w-24 h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
+                            w-20 h-20 md:w-24 md:h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
                             ${mesa.solicitaCuenta 
                                 ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" 
                                 : mesa.estado === "OCUPADA" 
@@ -195,16 +193,16 @@ export default function AdminDashboard() {
                         `}
                     >
                         {mesa.solicitaCuenta && (
-                            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
-                                <HandCoins size={14} />
+                            <div className="absolute -top-8 md:-top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 md:py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
+                                <HandCoins size={12} className="md:w-3.5 md:h-3.5" />
                                 PIDE CUENTA
                             </div>
                         )}
 
-                        <span className="font-black text-xl">{mesa.nombre}</span>
+                        <span className="font-black text-base md:text-xl">{mesa.nombre}</span>
                         
                         {mesa.estado === "OCUPADA" && (
-                            <span className="text-xs font-bold mt-1 text-black bg-gray-100 px-2 rounded-md border border-gray-200">
+                            <span className="text-[10px] md:text-xs font-bold mt-1 text-black bg-gray-100 px-1.5 md:px-2 rounded-md border border-gray-200">
                                 ${mesa.totalActual}
                             </span>
                         )}
@@ -216,7 +214,7 @@ export default function AdminDashboard() {
       ) : (
 
         /* --- VISTA GRILLA --- */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
             {mesasFiltradas.map((mesa: any) => (
             <div
                 key={mesa.id}
@@ -288,7 +286,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
             <div className="bg-red-600 p-6 text-white text-center relative">
-                <button onClick={() => setMesaParaCobrar(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={20} /></button>
+                <button onClick={() => setMesaParaCobrar(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                 <h3 className="text-2xl font-black uppercase tracking-tight">Mesa {mesaParaCobrar.nombre}</h3>
                 <p className="text-red-100 text-sm font-medium">Seleccioná una acción</p>
             </div>
@@ -298,11 +296,11 @@ export default function AdminDashboard() {
                     <div className="text-5xl font-black text-gray-900 mt-2">${mesaParaCobrar.totalActual}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => imprimirTicketCierre(mesaParaCobrar)} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group">
+                    <button onClick={() => imprimirTicketCierre(mesaParaCobrar)} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group active:scale-95">
                         <Printer size={32} className="text-gray-400 group-hover:text-gray-600" />
                         <span className="font-bold text-gray-600 text-sm">Imprimir Ticket</span>
                     </button>
-                    <button onClick={ejecutarCierre} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group">
+                    <button onClick={ejecutarCierre} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group active:scale-95">
                         <CheckCircle2 size={32} className="text-green-600 group-hover:scale-110 transition-transform" />
                         <span className="font-bold text-green-700 text-sm">Cerrar y Liberar</span>
                     </button>
