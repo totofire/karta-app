@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
 import { prisma } from "@/lib/prisma";
+
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -15,18 +14,22 @@ export async function GET() {
         sector: true,
         sesiones: {
           where: { fechaFin: null },
-          take: 1, // Traemos solo la sesión activa si existe
+          take: 1, // Traemos solo la sesión activa
           select: {
             id: true,
             fechaInicio: true,
             pedidos: {
+              where: { estado: { not: "CANCELADO" } }, // Excluimos cancelados si tienes ese estado
               select: {
                 fecha: true,
                 estado: true,
                 items: {
                   select: {
                     cantidad: true,
-                    precio: true
+                    precio: true,
+                    producto: { // <--- ESTO ES NUEVO: Traemos el nombre para el ticket
+                        select: { nombre: true } 
+                    }
                   }
                 }
               }
@@ -37,7 +40,7 @@ export async function GET() {
       orderBy: [{ sector: 'asc' }, { nombre: 'asc' }]
     });
 
-    // Procesamiento en memoria (Node.js es rapidísimo para esto)
+    // Procesamiento
     const estadoMesas = mesas.map((mesa) => {
       const sesionActiva = mesa.sesiones[0];
       
@@ -51,15 +54,42 @@ export async function GET() {
           sesionId: null,
           horaInicio: null,
           totalActual: 0,
-          ultimoPedido: null
+          ultimoPedido: null,
+          detalles: [] // Array vacío para evitar errores en el front
         };
       }
 
-      // Cálculo de totales usando reduce (sin ir a la BD de nuevo)
-      const total = sesionActiva.pedidos.reduce(
-        (sum, p) => sum + p.items.reduce((itemSum, i) => itemSum + (i.precio * i.cantidad), 0),
-        0
-      );
+      // --- NUEVA LÓGICA DE AGRUPACIÓN PARA EL TICKET ---
+      // Usamos un Map para sumar cantidades de productos iguales pedidos en diferentes rondas
+      const mapaDetalles = new Map();
+      let totalGeneral = 0;
+
+      sesionActiva.pedidos.forEach(pedido => {
+        pedido.items.forEach(item => {
+            const nombreProd = item.producto.nombre;
+            const subtotalItem = item.precio * item.cantidad;
+            
+            // Sumar al total general
+            totalGeneral += subtotalItem;
+
+            // Agrupar en el mapa
+            if (mapaDetalles.has(nombreProd)) {
+                const existente = mapaDetalles.get(nombreProd);
+                existente.cantidad += item.cantidad;
+                existente.subtotal += subtotalItem;
+            } else {
+                mapaDetalles.set(nombreProd, {
+                    producto: nombreProd,
+                    cantidad: item.cantidad,
+                    precioUnitario: item.precio,
+                    subtotal: subtotalItem
+                });
+            }
+        });
+      });
+
+      // Convertimos el mapa a array para el frontend
+      const detalles = Array.from(mapaDetalles.values());
 
       const ultimoPedido = sesionActiva.pedidos.length > 0
         ? new Date(sesionActiva.pedidos[sesionActiva.pedidos.length - 1].fecha)
@@ -74,8 +104,9 @@ export async function GET() {
         estado: 'OCUPADA',
         sesionId: sesionActiva.id,
         horaInicio: sesionActiva.fechaInicio,
-        totalActual: total,
-        ultimoPedido
+        totalActual: totalGeneral,
+        ultimoPedido,
+        detalles: detalles // <--- Aquí va la lista lista para imprimir
       };
     });
 

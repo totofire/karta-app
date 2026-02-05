@@ -7,8 +7,7 @@ import {
   ChefHat, 
   Clock, 
   Printer, 
-  AlertCircle,
-  Repeat 
+  AlertCircle 
 } from "lucide-react";
 
 // --- COMPONENTES AUXILIARES ---
@@ -47,6 +46,9 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 // --- PÁGINA PRINCIPAL ---
 
 export default function CocinaPage() {
+  // Nota: Asegúrate de que /api/cocina devuelva SOLO los items de cocina pendientes
+  // Si tu API actual devuelve todo el pedido, el filtro visual se hará aquí, 
+  // pero lo ideal es que el backend ya filtre.
   const { data: pedidos = [], mutate } = useSWR("/api/cocina", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
@@ -97,33 +99,41 @@ export default function CocinaPage() {
         ventana.close();
     }
 
-    // 2. Marcar como impreso en la base de datos (si no lo estaba)
+    // 2. Marcar como impreso en la base de datos
     if (!p.impreso) {
         await fetch(`/api/pedidos/${p.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ impreso: true }),
         });
-        mutate(); // Refrescar UI
+        mutate();
         toast.success("Marcado como impreso");
     }
   };
 
-  const completarPedido = async (id: number) => {
-    // UI Optimista: Lo sacamos de la lista visualmente
-    const pedidosFiltrados = pedidos.filter((p: any) => p.id !== id);
-    mutate(pedidosFiltrados, false);
+  // --- LÓGICA DE DESPACHO POR SECTOR (NUEVO) ---
+  const despacharCocina = async (pedidoId: number) => {
+    // UI Optimista: Eliminamos el pedido de la lista visualmente al instante
+    const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
+    mutate(pedidosRestantes, false);
 
     toast.promise(
-      fetch(`/api/pedidos/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: "ENTREGADO" }),
-      }).then(() => mutate()),
+      fetch('/api/admin/despachar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          pedidoId, 
+          sector: 'cocina' // <--- ESTO ES LA CLAVE: Solo despacha items de cocina
+        })
+      }).then(async (res) => {
+        if (!res.ok) throw new Error("Error al despachar");
+        // Revalidamos los datos reales del servidor
+        await mutate();
+      }),
       {
-        loading: 'Marchando...',
-        success: '¡Plato listo! 🔔',
-        error: 'Error',
+        loading: 'Despachando cocina...',
+        success: '¡Platos listos! 🍳',
+        error: 'Error al conectar',
       }
     );
   };
@@ -199,15 +209,15 @@ export default function CocinaPage() {
                       {item.cantidad}
                     </span>
                     <div className="flex-1 pt-0.5">
-                       <p className="font-bold text-lg text-slate-800 leading-tight">
-                         {item.producto.nombre}
-                       </p>
-                       {item.observaciones && (
-                         <div className="flex items-start gap-1 mt-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100">
-                           <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-                           {item.observaciones}
-                         </div>
-                       )}
+                        <p className="font-bold text-lg text-slate-800 leading-tight">
+                          {item.producto.nombre}
+                        </p>
+                        {item.observaciones && (
+                          <div className="flex items-start gap-1 mt-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100">
+                            <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                            {item.observaciones}
+                          </div>
+                        )}
                     </div>
                   </div>
                 ))}
@@ -229,11 +239,11 @@ export default function CocinaPage() {
                 </button>
                 
                 <button 
-                  onClick={() => completarPedido(p.id)}
-                  className="flex-[2] bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide"
+                  onClick={() => despacharCocina(p.id)} // <--- NUEVA FUNCIÓN
+                  className="flex-[2] bg-slate-900 hover:bg-green-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide group"
                 >
-                  <CheckCircle2 size={18} />
-                  DESPACHAR
+                  <CheckCircle2 size={18} className="group-hover:scale-110 transition-transform"/>
+                  LISTO
                 </button>
               </div>
 

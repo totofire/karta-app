@@ -79,14 +79,18 @@ model Pedido {
 }
 
 model ItemPedido {
-  id            Int      @id @default(autoincrement())
-  pedidoId      Int
-  pedido        Pedido   @relation(fields: [pedidoId], references: [id])
-  productoId    Int
-  producto      Producto @relation(fields: [productoId], references: [id])
-  cantidad      Int
-  precio        Float
+  id          Int      @id @default(autoincrement())
+  cantidad    Int
+  precio      Float
   observaciones String?
+  
+  // NUEVO CAMPO:
+  estado      String   @default("PENDIENTE") // "PENDIENTE", "ENTREGADO"
+
+  pedidoId    Int
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id])
+  productoId  Int
+  producto    Producto @relation(fields: [productoId], references: [id])
 }
 
 model Usuario {

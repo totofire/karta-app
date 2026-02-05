@@ -1,76 +1,108 @@
 "use client";
 import { useState, useMemo } from "react";
-import Link from "next/link";
-import useSWR from "swr"; // 🚀 La clave de la velocidad
+import useSWR from "swr";
 import toast from "react-hot-toast";
 import { 
-  RefreshCcw, Filter, Clock, DollarSign, Store 
+  RefreshCcw, Filter, Clock, DollarSign, Store, Printer, CheckCircle2, X 
 } from "lucide-react";
 
-// Fetcher simple para SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function AdminDashboard() {
-  // Estado local solo para UI
   const [filtroSector, setFiltroSector] = useState("Todos");
+  const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); // Estado para el modal
 
-  // 🚀 SWR: Maneja la carga, el caché y la revalidación automática
-  const { data: mesas = [], mutate, isLoading: cargando } = useSWR(
-    '/api/admin/estado',
-    fetcher,
-    {
-      refreshInterval: 5000,      // Actualiza cada 5 segs (Polling)
-      revalidateOnFocus: true,    // Actualiza al volver a la pestaña
-      keepPreviousData: true,     // Evita parpadeos mientras recarga
-    }
-  );
-
-  // Cargamos sectores (estos cambian poco, sin auto-refresh)
+  // Data fetching
+  const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
+    refreshInterval: 5000,
+    revalidateOnFocus: true,
+  });
   const { data: sectores = [] } = useSWR('/api/admin/sectores', fetcher);
 
-  // --- LÓGICA DE COBRO ---
-  const solicitarCierre = (sesionId: number, nombre: string, total: number) => {
-    toast((t) => (
-      <div className="flex flex-col gap-3 min-w-[250px]">
-        <div>
-          <h4 className="font-bold text-gray-800">¿Cerrar {nombre}?</h4>
-          <p className="text-sm text-gray-500">Total: <b className="text-green-600">${total}</b></p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { toast.dismiss(t.id); ejecutarCierre(sesionId); }}
-            className="flex-1 bg-gray-900 text-white py-2 rounded-lg text-xs font-bold"
-          >CONFIRMAR</button>
-          <button
-            onClick={() => toast.dismiss(t.id)}
-            className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-xs font-bold"
-          >CANCELAR</button>
-        </div>
-      </div>
-    ), { duration: 8000, icon: '💸' });
+  // --- FUNCIÓN DE IMPRESIÓN (TICKET DE CIERRE) ---
+  const imprimirTicketCierre = (mesa: any) => {
+    // Si la API de estado no trae los items, quizás necesites hacer un fetch extra aquí.
+    // Asumiremos que 'mesa' trae un array 'items' o similar. 
+    // Si no, hay que ajustar el endpoint /api/admin/estado para que incluya los items resumidos.
+    
+    const ventana = window.open('', 'PRINT', 'height=600,width=400');
+    if (ventana) {
+        ventana.document.write(`
+            <html>
+                <head>
+                    <title>Ticket Mesa ${mesa.nombre}</title>
+                    <style>
+                        body { font-family: 'Courier New', monospace; padding: 10px; width: 300px; margin: 0 auto; text-transform: uppercase; }
+                        .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                        .title { font-size: 20px; font-weight: bold; margin: 0; }
+                        .subtitle { font-size: 14px; margin-top: 5px; }
+                        .meta { font-size: 12px; margin-top: 5px; }
+                        .item { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px; }
+                        .total-row { border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; }
+                        .footer { text-align: center; font-size: 10px; margin-top: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1 class="title">KARTA RESTO</h1>
+                        <div class="subtitle">PRE-CUENTA</div>
+                        <div class="meta">MESA: ${mesa.nombre}</div>
+                        <div class="meta">FECHA: ${new Date().toLocaleString()}</div>
+                    </div>
+                    
+                    <div class="items">
+                        ${/* Aquí iteramos los items si los tenemos. Si no, mostramos solo total */ ''}
+                        ${mesa.detalles ? mesa.detalles.map((d: any) => `
+                            <div class="item">
+                                <span>${d.cantidad} x ${d.producto}</span>
+                                <span>$${d.subtotal}</span>
+                            </div>
+                        `).join('') : '<div style="text-align:center; margin:10px 0;">Detalle no disponible en vista rápida</div>'}
+                    </div>
+
+                    <div class="total-row">
+                        <span>TOTAL A PAGAR</span>
+                        <span>$${mesa.totalActual}</span>
+                    </div>
+
+                    <div class="footer">
+                        NO VALIDO COMO FACTURA<br/>
+                        GRACIAS POR SU VISITA
+                    </div>
+                </body>
+            </html>
+        `);
+        ventana.document.close();
+        ventana.focus();
+        ventana.print();
+        ventana.close();
+    }
   };
 
-  const ejecutarCierre = async (sesionId: number) => {
-    const toastId = toast.loading("Procesando pago...");
+  // --- LÓGICA DE COBRO (CIERRE DEFINITIVO) ---
+  const ejecutarCierre = async () => {
+    if (!mesaParaCobrar) return;
+    
+    const toastId = toast.loading("Cerrando mesa...");
     try {
       const res = await fetch("/api/admin/cerrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sesionId }),
+        body: JSON.stringify({ sesionId: mesaParaCobrar.sesionId }),
       });
 
       if (res.ok) {
-        toast.success("¡Mesa cobrada! 💰", { id: toastId });
-        mutate(); // 🚀 Recarga instantánea inteligente
+        toast.success("Mesa cerrada correctamente 💰", { id: toastId });
+        mutate(); 
+        setMesaParaCobrar(null); // Cerrar modal
       } else {
-        toast.error("Error al cerrar mesa", { id: toastId });
+        toast.error("Error al cerrar", { id: toastId });
       }
     } catch (error) {
-      toast.error("Error de red", { id: toastId });
+      toast.error("Error de conexión", { id: toastId });
     }
   };
 
-  // --- FILTRADO MEMORIZADO ---
   const mesasFiltradas = useMemo(() => {
     return filtroSector === "Todos" 
       ? mesas 
@@ -78,9 +110,9 @@ export default function AdminDashboard() {
   }, [mesas, filtroSector]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       
-      {/* BARRA SUPERIOR */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div>
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
@@ -107,22 +139,19 @@ export default function AdminDashboard() {
             </select>
           </div>
 
-          <button
-            onClick={() => mutate()}
-            className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95"
-          >
+          <button onClick={() => mutate()} className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95">
             <RefreshCcw size={20} className={cargando ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
-      {/* GRILLA */}
+      {/* GRILLA MESAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {mesasFiltradas.map((mesa: any) => (
           <div
             key={mesa.id}
             className={`
-              relative p-5 rounded-2xl border transition-all duration-300 group
+              relative p-5 rounded-2xl border transition-all duration-300
               ${mesa.estado === "OCUPADA"
                 ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
                 : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
@@ -145,9 +174,6 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <Clock size={14} className="text-gray-400" />
                     <span>{new Date(mesa.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    {mesa.ultimoPedido && (
-                      <span className="ml-auto bg-gray-50 px-2 py-0.5 rounded text-[10px] text-gray-400 truncate max-w-[80px]">+ {mesa.ultimoPedido}</span>
-                    )}
                   </div>
                   <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
                     <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
@@ -157,10 +183,13 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 </div>
+                {/* BOTÓN QUE ABRE EL MODAL */}
                 <button
-                  onClick={() => solicitarCierre(mesa.sesionId, mesa.nombre, mesa.totalActual)}
+                  onClick={() => setMesaParaCobrar(mesa)}
                   className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold shadow-md hover:bg-black active:scale-95 transition-all"
-                >COBRAR</button>
+                >
+                  COBRAR MESA
+                </button>
               </>
             ) : (
               <div className="h-24 flex flex-col items-center justify-center text-gray-300 gap-2">
@@ -170,6 +199,55 @@ export default function AdminDashboard() {
           </div>
         ))}
       </div>
+
+      {/* --- MODAL DE COBRO --- */}
+      {mesaParaCobrar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            
+            <div className="bg-red-600 p-6 text-white text-center relative">
+                <button 
+                    onClick={() => setMesaParaCobrar(null)}
+                    className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                >
+                    <X size={20} />
+                </button>
+                <h3 className="text-2xl font-black uppercase tracking-tight">Mesa {mesaParaCobrar.nombre}</h3>
+                <p className="text-red-100 text-sm font-medium">Seleccioná una acción</p>
+            </div>
+
+            <div className="p-8 space-y-6">
+                <div className="text-center">
+                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Total a cobrar</span>
+                    <div className="text-5xl font-black text-gray-900 mt-2">${mesaParaCobrar.totalActual}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <button 
+                        onClick={() => imprimirTicketCierre(mesaParaCobrar)}
+                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group"
+                    >
+                        <Printer size={32} className="text-gray-400 group-hover:text-gray-600" />
+                        <span className="font-bold text-gray-600 text-sm">Imprimir Ticket</span>
+                    </button>
+
+                    <button 
+                        onClick={ejecutarCierre}
+                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group"
+                    >
+                        <CheckCircle2 size={32} className="text-green-600 group-hover:scale-110 transition-transform" />
+                        <span className="font-bold text-green-700 text-sm">Cerrar y Liberar</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium">
+                Al cerrar, la mesa quedará disponible para nuevos clientes.
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
