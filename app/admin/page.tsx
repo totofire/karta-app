@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -25,9 +25,6 @@ export default function AdminDashboard() {
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); 
   const [vistaMapa, setVistaMapa] = useState(false);
 
-  // Referencia para saber qué mesas ya notificamos y no repetir el sonido
-  const mesasNotificadas = useRef<Set<number>>(new Set());
-
   // Data fetching
   const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
     refreshInterval: 5000,
@@ -35,41 +32,7 @@ export default function AdminDashboard() {
   });
   const { data: sectores = [] } = useSWR('/api/admin/sectores', fetcher);
 
-  // --- LÓGICA DE SONIDO (RINGTONE) 🔊 ---
-  useEffect(() => {
-    if (!mesas || mesas.length === 0) return;
-
-    let sonar = false;
-    const mesasPidiendoAhora = new Set<number>();
-
-    mesas.forEach((mesa: any) => {
-        if (mesa.solicitaCuenta) {
-            mesasPidiendoAhora.add(mesa.id);
-            
-            // Si esta mesa pide cuenta Y NO la teníamos registrada como notificada
-            if (!mesasNotificadas.current.has(mesa.id)) {
-                sonar = true;
-            }
-        }
-    });
-
-    if (sonar) {
-        // Reproducir sonido
-        const audio = new Audio("/sounds/ding.mp3");
-        audio.play().catch(e => console.log("El navegador bloqueó el autoplay hasta que hagas clic en la página"));
-        
-        // Notificación visual extra
-        toast("🔔 ¡Una mesa pide la cuenta!", { 
-            icon: "💸",
-            duration: 4000,
-            style: { border: '1px solid #EAB308', color: '#713F12' }
-        });
-    }
-
-    // Actualizamos la referencia para la próxima vuelta
-    mesasNotificadas.current = mesasPidiendoAhora;
-
-  }, [mesas]); // Se ejecuta cada vez que SWR trae datos nuevos
+  // ✅ ELIMINADA toda la lógica de sonido - ahora la manejan los Listeners
 
   // --- FUNCIÓN DE IMPRESIÓN ---
   const imprimirTicketCierre = (mesa: any) => {

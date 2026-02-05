@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { Toaster } from "react-hot-toast";
-import NotificationListener from "@/components/NotificationListener";
+import NotificationsManager from "@/components/NotificationsManager";
 import {
   LayoutDashboard,
   ChefHat,
@@ -45,7 +45,7 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-gray-50 flex transition-all duration-300">
       <Toaster />
-      <NotificationListener />
+<NotificationsManager />
       
       {/* SIDEBAR (Oculto al imprimir) */}
       <aside
