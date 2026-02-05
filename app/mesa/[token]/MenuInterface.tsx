@@ -1,15 +1,51 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
 import { useLoader } from "@/context/LoaderContext";
+import { Receipt, X, CheckCircle2 } from "lucide-react"; // Iconos necesarios
 
-export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
+export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos }: any) {
   // --- ESTADOS Y LÓGICA ---
   const [carrito, setCarrito] = useState<any>({});
   const [nombre, setNombre] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [verCuenta, setVerCuenta] = useState(false); // Modal de cuenta
   const { showLoader, hideLoader } = useLoader();
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
+
+  // --- LÓGICA DE AGRUPACIÓN DE CUENTA ("Mi Cuenta") ---
+  const { itemsHistoricos, totalHistorico } = useMemo(() => {
+    const mapa = new Map();
+    let total = 0;
+
+    if (!pedidosHistoricos) return { itemsHistoricos: [], totalHistorico: 0 };
+
+    pedidosHistoricos.forEach((pedido: any) => {
+      pedido.items.forEach((item: any) => {
+        const key = item.producto.id;
+        const subtotal = item.precio * item.cantidad;
+        total += subtotal;
+
+        if (mapa.has(key)) {
+          const existente = mapa.get(key);
+          existente.cantidad += item.cantidad;
+          existente.subtotal += subtotal;
+        } else {
+          mapa.set(key, {
+            nombre: item.producto.nombre,
+            cantidad: item.cantidad,
+            precio: item.precio,
+            subtotal: subtotal
+          });
+        }
+      });
+    });
+
+    return {
+      itemsHistoricos: Array.from(mapa.values()),
+      totalHistorico: total
+    };
+  }, [pedidosHistoricos]);
 
   // --- FUNCIÓN DE SCROLL ---
   const scrollearACategoria = (catId: number) => {
@@ -72,18 +108,19 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
 
       if (res.ok) {
         alert("¡Pedido enviado! 🍔 En un toque te llamamos.");
-        setCarrito({});
-        setNombre("");
+        // Refrescamos la página para que se actualice "Mi Cuenta"
+        window.location.reload(); 
       } else {
         const data = await res.json();
         alert(data.error || "Hubo un error al pedir. Llamá al mozo.");
+        setEnviando(false);
       }
     } catch (error) {
       console.error("Error de conexión:", error);
       alert("Error de conexión con el servidor.");
+      setEnviando(false);
     } finally {
       hideLoader();
-      setEnviando(false);
     }
   };
 
@@ -93,6 +130,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
       {/* --- HEADER --- */}
       <header className="bg-gradient-to-br from-red-600 to-red-700 text-white shadow-xl sticky top-0 z-20">
         <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]"> 
+          
           <div className="flex items-center gap-2 h-full">
             <div className="relative w-24 h-full min-h-[50px] drop-shadow-md">
               <Image 
@@ -104,10 +142,24 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
               />
             </div>
           </div>
-          <div className="flex flex-col items-end justify-center leading-none">
-            <span className="text-[9px] font-semibold text-red-200 uppercase tracking-widest mb-0.5">Mesa</span>
-            <div className="bg-white/95 text-red-600 px-3 py-1 rounded-md font-black text-sm shadow-sm">
-              {mesa.nombre}
+
+          <div className="flex items-center gap-3">
+            {/* BOTÓN VER CUENTA */}
+            {itemsHistoricos.length > 0 && (
+                <button 
+                    onClick={() => setVerCuenta(true)}
+                    className="flex flex-col items-center justify-center bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg transition-colors border border-white/10 backdrop-blur-sm active:scale-95"
+                >
+                    <Receipt size={18} className="text-yellow-300 mb-0.5" />
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-yellow-50">Mi Cuenta</span>
+                </button>
+            )}
+
+            <div className="flex flex-col items-end justify-center leading-none">
+              <span className="text-[9px] font-semibold text-red-200 uppercase tracking-widest mb-0.5">Mesa</span>
+              <div className="bg-white/95 text-red-600 px-3 py-1 rounded-md font-black text-sm shadow-sm">
+                {mesa.nombre}
+              </div>
             </div>
           </div>
         </div>
@@ -162,7 +214,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
                           sizes="100px"
                         />
                       ) : (
-                        /* Placeholder si no hay foto */
                         <div className="w-full h-full flex items-center justify-center text-gray-300">
                           <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                         </div>
@@ -172,7 +223,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
                     {/* --- INFORMACIÓN Y CONTROLES --- */}
                     <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
                       
-                      {/* Textos */}
                       <div>
                         <h3 className="font-bold text-sm text-gray-900 leading-tight truncate pr-1">{prod.nombre}</h3>
                         <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
@@ -180,7 +230,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
                         </p>
                       </div>
 
-                      {/* Precio y Botones */}
                       <div className="flex items-end justify-between mt-1">
                         <span className="text-lg font-black text-red-600">${prod.precio}</span>
 
@@ -210,7 +259,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
           ))}
       </main>
 
-      {/* --- FOOTER FLOTANTE --- */}
+      {/* --- FOOTER FLOTANTE (CARRITO) --- */}
       {totalItems > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
           <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
@@ -245,6 +294,83 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero }: any) {
           </div>
         </div>
       )}
+
+      {/* --- MODAL MI CUENTA --- */}
+      {verCuenta && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+            <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10">
+                
+                {/* Cabecera */}
+                <div className="bg-slate-900 text-white p-5 flex justify-between items-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none"></div>
+                    <div className="relative z-10">
+                        <h3 className="font-black text-xl flex items-center gap-2">
+                            <Receipt size={22} className="text-yellow-400" />
+                            Tu Consumo
+                        </h3>
+                        <p className="text-slate-400 text-xs mt-1 font-medium">Mesa {mesa.nombre} • Resumen parcial</p>
+                    </div>
+                    <button 
+                        onClick={() => setVerCuenta(false)}
+                        className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors relative z-10"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Lista */}
+                <div className="p-5 max-h-[50vh] overflow-y-auto">
+                    <div className="space-y-4">
+                        {itemsHistoricos.map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-start border-b border-dashed border-gray-200 pb-3 last:border-0 last:pb-0">
+                                <div className="flex gap-3">
+                                    <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs">
+                                        {item.cantidad}
+                                    </span>
+                                    <div>
+                                        <p className="font-bold text-gray-800 text-sm leading-tight">{item.nombre}</p>
+                                        <div className="flex items-center gap-1 mt-1">
+                                            <CheckCircle2 size={10} className="text-green-500" />
+                                            <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide">En marcha</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="block font-bold text-gray-900 text-sm">
+                                        ${item.subtotal}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400">
+                                        (${item.precio} c/u)
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Total */}
+                <div className="bg-gray-50 p-6 border-t border-gray-200">
+                    <div className="flex justify-between items-baseline mb-2">
+                        <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Total Acumulado</span>
+                        <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-xl mb-4">
+                        <p className="text-center text-[11px] text-yellow-800 font-medium leading-tight">
+                            Este total <b>NO incluye</b> lo que estás seleccionando ahora en el carrito.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => setVerCuenta(false)}
+                        className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl active:scale-95 transition-transform shadow-lg shadow-slate-200 hover:bg-black"
+                    >
+                        Seguir Pidiendo
+                    </button>
+                </div>
+
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }

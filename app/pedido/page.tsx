@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import MenuInterface from "@/app/mesa/[token]/MenuInterface"; // Reutilizamos tu componente visual
+import MenuInterface from "@/app/mesa/[token]/MenuInterface";
+
+// Forzamos dinamismo para evitar caché en los pedidos
+export const dynamic = 'force-dynamic';
 
 export default async function PedidoPage({
   searchParams,
@@ -12,10 +15,23 @@ export default async function PedidoPage({
 
   if (!tokenEfimero) return notFound();
 
-  // 1. Validar la sesión por el TOKEN EFÍMERO
+  // 1. Validar la sesión por el TOKEN EFÍMERO y traer HISTORIAL
   const sesion = await prisma.sesion.findUnique({
     where: { tokenEfimero },
-    include: { mesa: true },
+    include: { 
+      mesa: true,
+      // 👇 AGREGADO: Traer pedidos anteriores para "Mi Cuenta"
+      pedidos: {
+        where: { estado: { not: "CANCELADO" } },
+        include: {
+          items: {
+            include: {
+              producto: true // Necesario para mostrar nombres y precios en el resumen
+            }
+          }
+        }
+      }
+    },
   });
 
   // 2. Si no existe, error
@@ -44,8 +60,7 @@ export default async function PedidoPage({
     );
   }
 
-  // 4. Si todo está OK, cargamos los datos para el menú
-  // (Esta lógica la traemos de tu archivo anterior)
+  // 4. Cargar productos del menú
   const categorias = await prisma.categoria.findMany({
     include: {
       productos: {
@@ -56,12 +71,13 @@ export default async function PedidoPage({
     orderBy: { orden: 'asc' }
   });
 
-  // 5. Renderizamos tu interfaz de siempre, pero pasándole el token seguro
+  // 5. Renderizamos pasando los pedidos históricos
   return (
     <MenuInterface 
       mesa={sesion.mesa} 
       categorias={categorias} 
-      tokenEfimero={tokenEfimero} // ⚠️ Pasamos este token nuevo, NO el id de mesa
+      tokenEfimero={tokenEfimero}
+      pedidosHistoricos={sesion.pedidos || []} // 👈 Pasamos el historial aquí
     />
   );
 }
