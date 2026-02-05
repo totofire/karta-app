@@ -1,144 +1,180 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { BellRing, GlassWater } from 'lucide-react';
+import { BellRing, Volume2 } from 'lucide-react';
 
 export default function NotificationListener() {
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [showAudioPrompt, setShowAudioPrompt] = useState(true);
 
-  // 1. Inicialización: Permisos y Audio
+  // Inicializar audio y permisos
   useEffect(() => {
-    // Pedir permiso para notificaciones del sistema
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
+    if (typeof window !== 'undefined') {
+      // Crear el audio element
+      audioRef.current = new Audio('/sounds/ding.mp3');
+      audioRef.current.preload = 'auto';
+      audioRef.current.volume = 1.0;
+
+      // Solicitar permisos de notificaciones
+      if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
     }
-    // Pre-cargar el audio
-    audioRef.current = new Audio('/sounds/ding.mp3');
   }, []);
 
-  // 2. Conexión a Supabase Realtime
+  // Función para habilitar el audio con interacción del usuario
+  const habilitarAudio = async () => {
+    if (audioRef.current) {
+      try {
+        // Reproducir y pausar inmediatamente para "desbloquear" el audio
+        audioRef.current.volume = 0.01;
+        await audioRef.current.play();
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.volume = 1.0;
+        
+        setAudioEnabled(true);
+        setShowAudioPrompt(false);
+        toast.success('🔊 Sonido de notificaciones activado', { duration: 2000 });
+      } catch (error) {
+        console.error('Error al habilitar audio:', error);
+        toast.error('No se pudo activar el sonido. Intenta de nuevo.', { duration: 3000 });
+      }
+    }
+  };
+
+  // Listener de pedidos
   useEffect(() => {
-    console.log('🟢 Iniciando escucha de pedidos en tiempo real...');
+    console.log('🟢 Escuchando pedidos...');
 
     const channel = supabase
       .channel('pedidos-realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT', // Escuchamos SOLO nuevos pedidos
-          schema: 'public',
-          table: 'Pedido',
-        },
+        { event: 'INSERT', schema: 'public', table: 'Pedido' },
         async (payload) => {
-          console.log('🔔 ¡NUEVO PEDIDO DETECTADO!', payload.new);
+          console.log('🔔 Evento recibido:', payload);
 
-          // A. Reproducir sonido
-          reproducirAlerta();
+          // 1. Reproducir sonido (solo si está habilitado)
+          if (audioEnabled && audioRef.current) {
+            try {
+              audioRef.current.currentTime = 0;
+              await audioRef.current.play();
+            } catch (error) {
+              console.log('Audio bloqueado por el navegador:', error);
+              setShowAudioPrompt(true);
+            }
+          }
 
-          // B. Refrescar datos en pantalla (Next.js server components)
+          // 2. Refrescar la pantalla
           router.refresh();
 
-          // C. Obtener detalles adicionales si es necesario (opcional)
-          // El payload.new tiene los datos crudos de la tabla Pedido.
-          // Para saber si es cocina o barra, a veces necesitas consultar los items.
-          // Por simplicidad, aquí lanzamos una alerta genérica y refrescamos.
-          
-          // D. Notificar
+          // 3. Mostrar la notificación
           notificar(payload.new);
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Conectado exitosamente a Supabase Realtime');
-        }
-      });
+      .subscribe();
 
-    // Limpieza al desmontar
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router]);
-
-  const reproducirAlerta = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.volume = 1.0;
-      audioRef.current.play().catch((e) => {
-        console.warn('Audio bloqueado por el navegador (interacción requerida)', e);
-      });
-    }
-  };
+  }, [router, audioEnabled]);
 
   const notificar = (pedido: any) => {
-    // Nota: El payload.new solo trae los datos de la tabla Pedido (id, fecha, total, etc.)
-    // No trae relaciones (items, mesa) por defecto en Realtime.
-    // Para una alerta rápida, usamos un mensaje genérico.
-    // Si necesitas diferenciar Cocina/Barra en la alerta, el router.refresh() 
-    // actualizará las tablas de abajo y ahí se verá.
+    const hayDatos = pedido && pedido.id;
     
-    const titulo = "¡NUEVO PEDIDO INGRESADO! 🔔";
-    const texto = `Pedido #${pedido.id} - Revisar paneles`;
+    const titulo = "¡NUEVO PEDIDO RECIBIDO! 🍔";
+    const texto = hayDatos 
+      ? `Pedido #${pedido.id} ingresado` 
+      : `Revisar listado de pedidos`;
 
-    // 1. Notificación Visual en la App (Toast)
     mostrarToast(titulo, texto);
 
-    // 2. Notificación del Sistema (Si la app está en segundo plano)
-    if (
-      typeof window !== "undefined" &&
-      "Notification" in window &&
-      document.hidden
-    ) {
+    // Notificación de sistema (Windows/Android)
+    if (typeof window !== "undefined" && "Notification" in window && document.hidden) {
       if (Notification.permission === "granted") {
-        const notif = new Notification("KARTA: " + titulo, {
+        const notification = new Notification("KARTA: " + titulo, {
           body: texto,
           icon: "/logo-karta.png",
           tag: "nuevo-pedido",
+          requireInteraction: false,
+          silent: false,
         });
-        notif.onclick = () => {
+
+        // Auto-cerrar después de 5 segundos
+        setTimeout(() => notification.close(), 5000);
+        
+        // Navegar al hacer click
+        notification.onclick = () => {
           window.focus();
-          window.location.href = "/admin"; // Llevar al dashboard general
+          window.location.href = "/admin";
+          notification.close();
         };
       }
     }
   };
 
   const mostrarToast = (titulo: string, texto: string) => {
-    toast.custom(
-      (t) => (
-        <div
-          onClick={() => {
-            window.location.href = "/admin";
-            toast.dismiss(t.id);
-          }}
-          className={`${
-            t.visible ? "animate-in slide-in-from-top-5 fade-in" : "animate-out fade-out"
-          } max-w-sm w-full bg-white shadow-xl rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 cursor-pointer hover:scale-[1.02] transition-transform duration-200 overflow-hidden border-l-4 border-green-500`}
-        >
-          <div className="flex-1 p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full flex items-center justify-center flex-shrink-0 bg-green-50 text-green-600">
-              <BellRing size={24} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black text-gray-900 truncate">
-                {titulo}
+    toast.custom((t) => (
+      <div
+        onClick={() => {
+          toast.dismiss(t.id);
+          window.location.href = "/admin";
+        }}
+        className={`${
+          t.visible ? 'animate-in fade-in' : 'animate-out fade-out'
+        } max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 cursor-pointer border-l-4 border-green-500`}
+      >
+        <div className="flex-1 p-4 flex items-center gap-4">
+          <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+            <BellRing size={20} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-900">{titulo}</p>
+            <p className="text-sm text-gray-500">{texto}</p>
+          </div>
+        </div>
+      </div>
+    ), { duration: 5000 });
+  };
+
+  // Prompt para habilitar el audio
+  if (showAudioPrompt) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 rounded-lg shadow-2xl max-w-sm animate-in slide-in-from-bottom-5">
+          <div className="flex items-start gap-3">
+            <Volume2 size={24} className="flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-bold text-sm mb-1">Activar notificaciones sonoras</h3>
+              <p className="text-xs text-green-50 mb-3">
+                Para recibir alertas de nuevos pedidos con sonido, haz clic en el botón.
               </p>
-              <p className="text-sm text-gray-600 truncate">{texto}</p>
-              <p className="text-[10px] text-gray-400 mt-1 font-bold">
-                CLICK PARA VER
-              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={habilitarAudio}
+                  className="bg-white text-green-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-green-50 transition-colors"
+                >
+                  Activar sonido
+                </button>
+                <button
+                  onClick={() => setShowAudioPrompt(false)}
+                  className="bg-green-600 text-white px-3 py-2 rounded-md text-sm hover:bg-green-700 transition-colors"
+                >
+                  Más tarde
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      ),
-      { duration: 5000, position: "top-right" }
+      </div>
     );
-  };
+  }
 
   return null;
 }
