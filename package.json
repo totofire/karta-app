@@ -17,6 +17,7 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-draggable": "^4.5.0",
     "react-hot-toast": "^2.6.0",
     "react-qr-code": "^2.0.18",
     "sqlite3": "^5.1.7",

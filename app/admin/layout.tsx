@@ -3,8 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { Toaster } from "react-hot-toast"; // Para que se vean los carteles
-import NotificationListener from "@/components/NotificationListener"; // Tu oreja global
+import { Toaster } from "react-hot-toast";
+import NotificationListener from "@/components/NotificationListener";
 import {
   LayoutDashboard,
   ChefHat,
@@ -16,7 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Tags,
-  GlassWater, // <--- Ícono para la barra
+  GlassWater,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -30,7 +30,7 @@ export default function AdminLayout({
   const menuItems = [
     { name: "Panel General", href: "/admin", icon: LayoutDashboard },
     { name: "Cocina en Vivo", href: "/admin/cocina", icon: ChefHat },
-    { name: "Barra / Bebidas", href: "/admin/barra", icon: GlassWater }, // <--- Nuevo ítem de Barra
+    { name: "Barra / Bebidas", href: "/admin/barra", icon: GlassWater },
     { name: "Mesas y Zonas", href: "/admin/mesas", icon: Armchair },
     { name: "Categorías", href: "/admin/categorias", icon: Tags },
     {
@@ -46,6 +46,7 @@ export default function AdminLayout({
     <div className="min-h-screen bg-gray-50 flex transition-all duration-300">
       <Toaster />
       <NotificationListener />
+      
       {/* SIDEBAR (Oculto al imprimir) */}
       <aside
         className={`
@@ -183,40 +184,66 @@ export default function AdminLayout({
       {/* CONTENIDO PRINCIPAL */}
       <main
         className={`
-          flex-1 p-4 md:p-8 transition-all duration-300 ease-in-out print:ml-0 print:p-0
+          flex-1 p-4 md:p-8 transition-all duration-300 ease-in-out print:ml-0 print:p-0 pb-24 md:pb-8
           ${isSidebarOpen ? "md:ml-64" : "md:ml-20"} 
         `}
       >
         {children}
       </main>
 
-      {/* BARRA MÓVIL (Solo visible en pantallas chicas, oculta al imprimir) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-3 z-50 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] print:hidden">
-        {/* Mostramos los 5 ítems más relevantes para móvil */}
-        {menuItems
-          .filter((i) =>
-            [
-              "/admin",
-              "/admin/cocina",
-              "/admin/barra",
-              "/admin/mesas",
-              "/admin/productos",
-            ].includes(i.href),
-          )
-          .map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`p-2 rounded-xl transition-colors ${isActive ? "text-red-600 bg-red-50" : "text-gray-400"}`}
-              >
-                <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
-              </Link>
-            );
-          })}
+      {/* ==========================================
+          NAVEGACIÓN MÓVIL CON SCROLL HORIZONTAL
+          ========================================== */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-xl z-50 print:hidden">
+        
+        {/* GRADIENTE IZQUIERDO - Indica más contenido a la izquierda */}
+        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none z-10"></div>
+        
+        {/* GRADIENTE DERECHO - Indica más contenido a la derecha */}
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none z-10"></div>
+        
+        {/* CONTENEDOR CON SCROLL HORIZONTAL */}
+        <div className="overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex justify-start min-w-max px-2 py-2 gap-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`
+                    flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all min-w-[70px]
+                    ${isActive 
+                      ? "bg-red-600 text-white shadow-lg shadow-red-200" 
+                      : "text-gray-400 hover:text-gray-600 hover:bg-gray-50 active:scale-95"
+                    }
+                  `}
+                >
+                  <Icon size={20} strokeWidth={2.5} />
+                  <span className="text-[9px] font-bold uppercase tracking-wide whitespace-nowrap">
+                    {item.name.split(" ")[0]}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* INDICADORES DE SCROLL (puntitos) */}
+        <div className="flex justify-center gap-1 pb-2 pt-1">
+          {[...Array(Math.ceil(menuItems.length / 4))].map((_, idx) => (
+            <div 
+              key={idx}
+              className={`h-1 rounded-full transition-all ${
+                idx === 0 ? "w-4 bg-red-600" : "w-1 bg-gray-200"
+              }`}
+            ></div>
+          ))}
+        </div>
       </nav>
+
     </div>
   );
 }

@@ -143,28 +143,30 @@ export default function NotificationListener() {
     ), { duration: 5000 });
   };
 
-  // Prompt para habilitar el audio
+  // Prompt para habilitar el audio - VERSIÓN RESPONSIVE
   if (showAudioPrompt) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 rounded-lg shadow-2xl max-w-sm animate-in slide-in-from-bottom-5">
+      <div className="fixed bottom-20 md:bottom-4 left-4 right-4 md:left-auto md:right-4 z-[60] md:max-w-sm">
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5">
           <div className="flex items-start gap-3">
-            <Volume2 size={24} className="flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-bold text-sm mb-1">Activar notificaciones sonoras</h3>
-              <p className="text-xs text-green-50 mb-3">
-                Para recibir alertas de nuevos pedidos con sonido, haz clic en el botón.
+            <div className="flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/20 flex items-center justify-center">
+              <Volume2 size={20} className="md:w-6 md:h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-sm md:text-base mb-1">Activar sonido de pedidos</h3>
+              <p className="text-xs md:text-sm text-green-50 mb-3 leading-relaxed">
+                Toca el botón para recibir alertas sonoras cuando lleguen nuevos pedidos.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={habilitarAudio}
-                  className="bg-white text-green-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-green-50 transition-colors"
+                  className="bg-white text-green-600 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-green-50 transition-all active:scale-95 shadow-md flex-1 sm:flex-initial"
                 >
-                  Activar sonido
+                  ✓ Activar ahora
                 </button>
                 <button
                   onClick={() => setShowAudioPrompt(false)}
-                  className="bg-green-600 text-white px-3 py-2 rounded-md text-sm hover:bg-green-700 transition-colors"
+                  className="bg-white/10 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all active:scale-95 backdrop-blur-sm"
                 >
                   Más tarde
                 </button>
@@ -173,7 +175,7 @@ export default function NotificationListener() {
           </div>
         </div>
       </div>
-    );
+    );s
   }
 
   return null;

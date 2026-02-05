@@ -16,11 +16,13 @@ model Mesa {
   qr_token  String   @unique
   activo    Boolean  @default(true)
   sector    String   @default("General")
+  
+  posX      Int      @default(0)
+  posY      Int      @default(0)
+  
   sesiones  Sesion[]
 
-  // 🚀 ÍNDICES DE VELOCIDAD
-  @@index([activo, sector]) // Para filtrar rápido en el dashboard
-  @@index([sector])         // Para agrupaciones
+  @@index([activo, sector])
 }
 
 model Sesion {

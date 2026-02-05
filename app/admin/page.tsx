@@ -3,7 +3,17 @@ import { useState, useMemo } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import { 
-  RefreshCcw, Filter, Clock, DollarSign, Store, Printer, CheckCircle2, X, HandCoins 
+  RefreshCcw, 
+  Filter, 
+  Clock, 
+  DollarSign, 
+  Store, 
+  Printer, 
+  CheckCircle2, 
+  X, 
+  HandCoins,
+  Map,        // Icono Mapa
+  LayoutGrid  // Icono Lista
 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -11,6 +21,7 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); // Estado para el modal
+  const [vistaMapa, setVistaMapa] = useState(false); // <--- ESTADO PARA EL SWITCH
 
   // Data fetching
   const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
@@ -52,7 +63,7 @@ export default function AdminDashboard() {
                                 <span>${d.cantidad} x ${d.producto}</span>
                                 <span>$${d.subtotal}</span>
                             </div>
-                        `).join('') : '<div style="text-align:center; margin:10px 0;">Detalle no disponible en vista rápida</div>'}
+                        `).join('') : '<div style="text-align:center; margin:10px 0;">Detalle no disponible</div>'}
                     </div>
 
                     <div class="total-row">
@@ -105,10 +116,10 @@ export default function AdminDashboard() {
   }, [mesas, filtroSector]);
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative h-full flex flex-col">
       
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm z-20">
         <div>
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
             <Store className="text-red-600" size={24} />
@@ -119,7 +130,17 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          
+          {/* BOTÓN SWITCH VISTA (LISTA vs MAPA) */}
+          <button 
+            onClick={() => setVistaMapa(!vistaMapa)}
+            className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-bold flex gap-2 items-center text-gray-700 transition-colors shadow-sm"
+          >
+             {vistaMapa ? <LayoutGrid size={18}/> : <Map size={18}/>}
+             {vistaMapa ? "Ver Lista" : "Ver Mapa"}
+          </button>
+
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400"><Filter size={16} /></div>
             <select 
@@ -134,80 +155,131 @@ export default function AdminDashboard() {
             </select>
           </div>
 
-          <button onClick={() => mutate()} className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95">
+          <button onClick={() => mutate()} className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95 shadow-sm">
             <RefreshCcw size={20} className={cargando ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
-      {/* GRILLA MESAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {mesasFiltradas.map((mesa: any) => (
-          <div
-            key={mesa.id}
-            className={`
-              relative p-5 rounded-2xl border transition-all duration-300
-              ${mesa.solicitaCuenta 
-                 ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse" 
-                 : mesa.estado === "OCUPADA"
-                    ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                    : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
-              }
-            `}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
-              </div>
-              <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide 
-                ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}
-              `}>
-                {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
-              </span>
-            </div>
-
-            {/* AVISO GIGANTE SI PIDE CUENTA */}
-            {mesa.solicitaCuenta && (
-                <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
-                    <HandCoins size={18} />
-                    ¡PIDE CUENTA!
-                </div>
-            )}
-
-            {mesa.estado === "OCUPADA" ? (
-              <>
-                <div className="space-y-3 mb-6">
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Clock size={14} className="text-gray-400" />
-                    <span>{new Date(mesa.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                  <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
-                    <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
-                    <div className="flex items-center text-gray-900">
-                      <DollarSign size={16} className="text-gray-400" strokeWidth={3} />
-                      <span className="text-2xl font-black">{mesa.totalActual}</span>
-                    </div>
-                  </div>
-                </div>
-                {/* BOTÓN QUE ABRE EL MODAL */}
-                <button
-                  onClick={() => setMesaParaCobrar(mesa)}
-                  className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
-                    ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}
-                  `}
+      {/* CONTENIDO PRINCIPAL (CONDICIONAL) */}
+      {vistaMapa ? (
+        
+        /* --- VISTA MAPA --- */
+        <div className="relative w-full h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-hidden">
+            {/* Fondo decorativo (Grilla suave) */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+            
+            {mesasFiltradas.map((mesa: any) => (
+                <div
+                    key={mesa.id}
+                    // IMPORTANTE: Aquí usamos las coordenadas guardadas
+                    style={{ transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)` }} 
+                    className="absolute transition-all duration-500 ease-in-out" 
                 >
-                  COBRAR MESA
-                </button>
-              </>
-            ) : (
-              <div className="h-24 flex flex-col items-center justify-center text-gray-300 gap-2">
-                <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                    <div 
+                        // Solo abre el modal si está ocupada
+                        onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
+                        className={`
+                            w-24 h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
+                            ${mesa.solicitaCuenta 
+                                ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" // DESTACADO MÁXIMO
+                                : mesa.estado === "OCUPADA" 
+                                    ? "border-red-500 text-red-600 z-10" 
+                                    : "border-gray-300 text-gray-400 opacity-60"
+                            }
+                        `}
+                    >
+                        {/* ALERTA FLOTANTE EN EL MAPA */}
+                        {mesa.solicitaCuenta && (
+                            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
+                                <HandCoins size={14} />
+                                ¡CUENTA!
+                            </div>
+                        )}
+
+                        <span className="font-black text-xl">{mesa.nombre}</span>
+                        
+                        {mesa.estado === "OCUPADA" && (
+                            <span className="text-xs font-bold mt-1 text-black bg-gray-100 px-2 rounded-md border border-gray-200">
+                                ${mesa.totalActual}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+
+      ) : (
+
+        /* --- VISTA GRILLA (LISTA TRADICIONAL) --- */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {mesasFiltradas.map((mesa: any) => (
+            <div
+                key={mesa.id}
+                className={`
+                relative p-5 rounded-2xl border transition-all duration-300
+                ${mesa.solicitaCuenta 
+                    ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse" // DESTACADO MÁXIMO
+                    : mesa.estado === "OCUPADA"
+                        ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                        : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+                }
+                `}
+            >
+                <div className="flex justify-between items-start mb-4">
+                <div>
+                    <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
+                </div>
+                <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide 
+                    ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}
+                `}>
+                    {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
+                </span>
+                </div>
+
+                {/* AVISO GIGANTE SI PIDE CUENTA */}
+                {mesa.solicitaCuenta && (
+                    <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
+                        <HandCoins size={18} />
+                        ¡PIDE CUENTA!
+                    </div>
+                )}
+
+                {mesa.estado === "OCUPADA" ? (
+                <>
+                    <div className="space-y-3 mb-6">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <Clock size={14} className="text-gray-400" />
+                        <span>{new Date(mesa.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
+                        <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
+                        <div className="flex items-center text-gray-900">
+                        <DollarSign size={16} className="text-gray-400" strokeWidth={3} />
+                        <span className="text-2xl font-black">{mesa.totalActual}</span>
+                        </div>
+                    </div>
+                    </div>
+                    {/* BOTÓN QUE ABRE EL MODAL */}
+                    <button
+                    onClick={() => setMesaParaCobrar(mesa)}
+                    className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
+                        ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}
+                    `}
+                    >
+                    COBRAR MESA
+                    </button>
+                </>
+                ) : (
+                <div className="h-24 flex flex-col items-center justify-center text-gray-300 gap-2">
+                    <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
+                </div>
+                )}
+            </div>
+            ))}
+        </div>
+      )}
 
       {/* --- MODAL DE COBRO --- */}
       {mesaParaCobrar && (
