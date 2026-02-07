@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
+import { getLocalId } from "@/lib/auth";
 
-async function getLocalId(req: Request): Promise<number | null> {
-  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
-  if (!tokenCookie) return null;
-  const token = tokenCookie.split("=")[1];
-  try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
-    const { payload } = await jwtVerify(token, secret);
-    return payload.localId as number;
-  } catch {
-    return null;
-  }
-}
-
-export async function GET(req: Request) {
-  const localId = await getLocalId(req);
+export async function GET() {
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const categorias = await prisma.categoria.findMany({
@@ -30,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const localId = await getLocalId(req);
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { nombre, orden, imprimirCocina } = await req.json();

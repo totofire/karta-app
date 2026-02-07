@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
-
-async function getLocalId(req: Request): Promise<number | null> {
-  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
-  if (!tokenCookie) return null;
-  const token = tokenCookie.split("=")[1];
-  try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
-    const { payload } = await jwtVerify(token, secret);
-    return payload.localId as number;
-  } catch {
-    return null;
-  }
-}
+import { getLocalId } from "@/lib/auth";
 
 export async function POST(req: Request) {
-  const localId = await getLocalId(req);
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {

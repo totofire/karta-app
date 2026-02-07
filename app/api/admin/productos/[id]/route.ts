@@ -1,28 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
+import { getLocalId } from "@/lib/auth";
 
-export const dynamic = 'force-dynamic';
-
-async function getLocalId(req: Request): Promise<number | null> {
-  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
-  if (!tokenCookie) return null;
-  const token = tokenCookie.split("=")[1];
-  try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
-    const { payload } = await jwtVerify(token, secret);
-    return payload.localId as number;
-  } catch {
-    return null;
-  }
-}
+export const dynamic = "force-dynamic";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const localId = await getLocalId(request);
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const body = await request.json();
@@ -75,7 +62,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const localId = await getLocalId(request);
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {
