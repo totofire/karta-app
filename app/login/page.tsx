@@ -26,7 +26,7 @@ export default function LoginPage() {
     if (res.ok) {
       toast.success("Bienvenido, Jefe", { duration: 2000 });
       setTimeout(() => {
-        toast.dismiss(); // Limpia todos los toasts
+        toast.dismiss();
         router.push("/admin");
       }, 2000);
     } else {
@@ -40,16 +40,27 @@ export default function LoginPage() {
       <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300">
         
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-            <Image src="/karta-logo.png" alt="Karta" width={50} height={50} className="object-contain" />
+          {/* --- CAMBIOS AQUÍ: Fondo blanco, sin sombra interna, más grande --- */}
+          <div className="w-28 h-28 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg p-2 border-4 border-red-50">
+            <div className="relative w-full h-full">
+                <Image 
+                    src="/logo2.png" 
+                    alt="Karta" 
+                    fill
+                    className="object-contain" 
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    priority
+                />
+            </div>
           </div>
+          {/* ------------------------------------------------------------------ */}
+          
           <h1 className="text-2xl font-black text-gray-800 tracking-tight">KARTA ADMIN</h1>
           <p className="text-gray-400 text-sm mt-1">Panel de Gestión</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           
-          {/* CAMPO EMAIL */}
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
               <Mail size={20} />
@@ -63,7 +74,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* CAMPO PASSWORD */}
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
               <Lock size={20} />
