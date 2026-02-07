@@ -33,7 +33,7 @@ async function main() {
       nombre: 'La Birrería del Centro', 
       direccion: 'Av. Libertador 1234', 
       slug: 'birreria-centro',
-      estado: 'ACTIVO' // <--- IMPORTANTE
+      estado: 'ACTIVO'
     }
   });
 
@@ -119,14 +119,14 @@ async function main() {
   const b_sectorInterior = await prisma.sector.create({ data: { nombre: 'Salón Principal', orden: 1, localId: localBirreria.id } });
   const b_sectorPatio = await prisma.sector.create({ data: { nombre: 'Patio Cervecero', orden: 2, localId: localBirreria.id } });
 
-  // Mesas
+  // Mesas (SIN TOKEN MANUAL -> Se genera solo)
   await prisma.mesa.createMany({
     data: [
-      { nombre: 'Mesa 1', qr_token: 'b_m1', sector: b_sectorInterior.nombre, localId: localBirreria.id },
-      { nombre: 'Mesa 2', qr_token: 'b_m2', sector: b_sectorInterior.nombre, localId: localBirreria.id },
-      { nombre: 'Mesa 3', qr_token: 'b_m3', sector: b_sectorInterior.nombre, localId: localBirreria.id },
-      { nombre: 'Patio 1', qr_token: 'b_p1', sector: b_sectorPatio.nombre, localId: localBirreria.id },
-      { nombre: 'Patio 2', qr_token: 'b_p2', sector: b_sectorPatio.nombre, localId: localBirreria.id },
+      { nombre: 'Mesa 1', sector: b_sectorInterior.nombre, localId: localBirreria.id },
+      { nombre: 'Mesa 2', sector: b_sectorInterior.nombre, localId: localBirreria.id },
+      { nombre: 'Mesa 3', sector: b_sectorInterior.nombre, localId: localBirreria.id },
+      { nombre: 'Patio 1', sector: b_sectorPatio.nombre, localId: localBirreria.id },
+      { nombre: 'Patio 2', sector: b_sectorPatio.nombre, localId: localBirreria.id },
     ]
   });
 
@@ -164,10 +164,11 @@ async function main() {
 
   const c_sectorUnico = await prisma.sector.create({ data: { nombre: 'Salón', orden: 1, localId: localCafe.id } });
 
+  // Mesas (SIN TOKEN MANUAL)
   await prisma.mesa.createMany({
     data: [
-      { nombre: 'Mesa 1', qr_token: 'c_m1', sector: c_sectorUnico.nombre, localId: localCafe.id },
-      { nombre: 'Mesa 2', qr_token: 'c_m2', sector: c_sectorUnico.nombre, localId: localCafe.id },
+      { nombre: 'Mesa 1', sector: c_sectorUnico.nombre, localId: localCafe.id },
+      { nombre: 'Mesa 2', sector: c_sectorUnico.nombre, localId: localCafe.id },
     ]
   });
 
@@ -191,10 +192,11 @@ async function main() {
 
   const p_sector = await prisma.sector.create({ data: { nombre: 'Salón', orden: 1, localId: localPizzeria.id } });
 
+  // Mesas (SIN TOKEN MANUAL)
   await prisma.mesa.createMany({
     data: [
-      { nombre: 'Mesa 10', qr_token: 'p_m10', sector: p_sector.nombre, localId: localPizzeria.id },
-      { nombre: 'Mesa 11', qr_token: 'p_m11', sector: p_sector.nombre, localId: localPizzeria.id },
+      { nombre: 'Mesa 10', sector: p_sector.nombre, localId: localPizzeria.id },
+      { nombre: 'Mesa 11', sector: p_sector.nombre, localId: localPizzeria.id },
     ]
   });
 

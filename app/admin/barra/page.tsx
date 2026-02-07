@@ -41,13 +41,21 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
   );
 };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+// Fetcher seguro
+const fetcher = (url: string) => fetch(url).then(async (res) => {
+    if (!res.ok) return [];
+    return res.json();
+});
 
 export default function BarraPage() {
-  const { data: pedidos = [], mutate } = useSWR("/api/barra", fetcher, {
+  const { data: pedidosRaw = [], mutate } = useSWR("/api/barra", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
+    fallbackData: []
   });
+
+  // Aseguramos que sea array
+  const pedidos = Array.isArray(pedidosRaw) ? pedidosRaw : [];
 
   const imprimirComanda = (p: any) => {
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
@@ -92,11 +100,14 @@ export default function BarraPage() {
     mutate(pedidosNuevos, false);
 
     toast.promise(
-      fetch(`/api/pedidos/${id}`, {
-        method: "PATCH",
+      fetch('/api/admin/despachar', { // Usamos el endpoint correcto
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: "ENTREGADO" }), 
-      }).then(() => mutate()),
+        body: JSON.stringify({ pedidoId: id, sector: 'barra' }), 
+      }).then(async (res) => {
+          if (!res.ok) throw new Error("Error");
+          await mutate();
+      }),
       {
         loading: 'Despachando bebidas...',
         success: '¡Listo! 🍻',
@@ -114,7 +125,7 @@ export default function BarraPage() {
     mutate(pedidosRestantes, false);
 
     toast.promise(
-        fetch('/api/admin/cancelar', { // Usamos el mismo endpoint genérico
+        fetch('/api/admin/cancelar', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pedidoId })

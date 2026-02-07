@@ -9,7 +9,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
     }
 
-    // Actualizamos la sesión para marcar que pidió la cuenta
+    // Actualizamos la sesión
+    // No hace falta validar localId aquí porque el tokenEfimero es único globalmente
+    // y solo afecta a esa sesión específica.
     await prisma.sesion.update({
       where: { tokenEfimero },
       data: { solicitaCuenta: new Date() }

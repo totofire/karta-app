@@ -18,19 +18,29 @@ import {
   PenTool 
 } from "lucide-react";
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) => fetch(url).then(async (res) => {
+    if (!res.ok) return []; // Si falla (ej: 401), devuelve array vacío
+    return res.json();
+});
 
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); 
   const [vistaMapa, setVistaMapa] = useState(false);
 
-  // Data fetching
+  // Data fetching con SWR
   const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
+    fallbackData: [] // Valor inicial seguro
   });
-  const { data: sectores = [] } = useSWR('/api/admin/sectores', fetcher);
+  
+  const { data: sectoresRaw } = useSWR('/api/admin/sectores', fetcher, {
+    fallbackData: []
+  });
+
+  // Aseguramos que sectores sea siempre un array
+  const sectores = Array.isArray(sectoresRaw) ? sectoresRaw : [];
 
   // --- FUNCIÓN DE IMPRESIÓN ---
   const imprimirTicketCierre = (mesa: any) => {
@@ -107,7 +117,9 @@ export default function AdminDashboard() {
     }
   };
 
+  // Filtrado seguro (validando que mesas sea array)
   const mesasFiltradas = useMemo(() => {
+    if (!Array.isArray(mesas)) return [];
     return filtroSector === "Todos" 
       ? mesas 
       : mesas.filter((m: any) => m.sector === filtroSector);

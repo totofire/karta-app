@@ -1,12 +1,35 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { jwtVerify } from "jose";
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function getLocalId(req: Request): Promise<number | null> {
+  try {
+    const cookieHeader = req.headers.get("cookie");
+    if (!cookieHeader) return null;
+    
+    const token = cookieHeader.split('; ').find(c => c.startsWith('token='))?.split('=')[1];
+    if (!token) return null;
+
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
+    const { payload } = await jwtVerify(token, secret);
+    return payload.localId as number;
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(req: Request) {
+  const localId = await getLocalId(req);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
   try {
     const mesas = await prisma.mesa.findMany({
-      where: { activo: true },
+      where: { 
+        activo: true,
+        localId: localId
+      },
       select: {
         id: true,
         nombre: true,
@@ -43,20 +66,10 @@ export async function GET() {
       orderBy: [{ sector: 'asc' }, { nombre: 'asc' }]
     });
 
-    // Procesamiento de datos para el frontend
     const estadoMesas = mesas.map((mesa) => {
       const sesionActiva = mesa.sesiones[0];
       
-      // Definimos la estructura con tipos que acepten null
-      let infoSesion: {
-        estado: string;
-        sesionId: number | null;
-        horaInicio: Date | null;
-        totalActual: number;
-        ultimoPedido: string | null; // Cambiado a string | null porque lo formateas abajo
-        detalles: any[];
-        solicitaCuenta: Date | null;
-      } = {
+      let infoSesion: any = {
         estado: 'LIBRE',
         sesionId: null,
         horaInicio: null,
@@ -74,7 +87,6 @@ export async function GET() {
             pedido.items.forEach(item => {
                 const nombreProd = item.producto.nombre;
                 const subtotalItem = item.precio * item.cantidad;
-                
                 totalGeneral += subtotalItem;
 
                 if (mapaDetalles.has(nombreProd)) {
@@ -93,7 +105,6 @@ export async function GET() {
         });
 
         const detalles = Array.from(mapaDetalles.values());
-
         const ultimoPedido = sesionActiva.pedidos.length > 0
             ? new Date(sesionActiva.pedidos[sesionActiva.pedidos.length - 1].fecha)
                 .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -104,7 +115,7 @@ export async function GET() {
             sesionId: sesionActiva.id,
             horaInicio: sesionActiva.fechaInicio,
             totalActual: totalGeneral,
-            ultimoPedido, // Ahora coincide con string | null
+            ultimoPedido,
             detalles: detalles,
             solicitaCuenta: sesionActiva.solicitaCuenta 
         };

@@ -1,48 +1,63 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { jwtVerify } from "jose";
 
 export const dynamic = 'force-dynamic';
+
+async function getLocalId(req: Request): Promise<number | null> {
+  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
+  if (!tokenCookie) return null;
+  const token = tokenCookie.split("=")[1];
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
+    const { payload } = await jwtVerify(token, secret);
+    return payload.localId as number;
+  } catch {
+    return null;
+  }
+}
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const localId = await getLocalId(request);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
   const body = await request.json();
 
   try {
-    // Creamos un objeto dinámico SOLO con lo que vamos a cambiar
+    // Verificar que el producto sea del local
+    const existe = await prisma.producto.findFirst({
+      where: { id: Number(id), localId }
+    });
+    if (!existe) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
+
     const datosAActualizar: any = {};
 
-    // Solo si mandaron nombre, lo agregamos
     if (body.nombre) datosAActualizar.nombre = body.nombre;
     
-    // Solo si mandaron precio, lo convertimos y agregamos
     if (body.precio !== undefined && body.precio !== "") {
         datosAActualizar.precio = Number(body.precio);
     }
 
-    // Solo si mandaron activo (true/false), lo agregamos
     if (body.activo !== undefined) {
         datosAActualizar.activo = body.activo;
     }
 
-    // Solo si mandaron descripción
     if (body.descripcion !== undefined) {
         datosAActualizar.descripcion = body.descripcion;
     }
 
-    // Solo si mandaron categoría
     if (body.categoriaId) {
         datosAActualizar.categoriaId = Number(body.categoriaId);
     }
 
-    // ✅ Solo si mandaron imagen, la agregamos
     if (body.imagen !== undefined) {
         datosAActualizar.imagen = body.imagen;
     }
 
-    // Actualizamos solo esos campos
     const productoActualizado = await prisma.producto.update({
       where: { id: Number(id) },
       data: datosAActualizar,
@@ -60,10 +75,16 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const localId = await getLocalId(request);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
   try {
-    await prisma.producto.delete({
-      where: { id: Number(id) },
+    const count = await prisma.producto.deleteMany({
+      where: { id: Number(id), localId },
     });
+
+    if (count.count === 0) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error al eliminar producto:", error);

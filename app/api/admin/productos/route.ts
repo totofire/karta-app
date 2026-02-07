@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { jwtVerify } from "jose";
 
 export const dynamic = 'force-dynamic';
 
-// Validación con Zod (incluyendo imagen)
+async function getLocalId(req: Request): Promise<number | null> {
+  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
+  if (!tokenCookie) return null;
+  const token = tokenCookie.split("=")[1];
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
+    const { payload } = await jwtVerify(token, secret);
+    return payload.localId as number;
+  } catch {
+    return null;
+  }
+}
+
 const productoSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
   precio: z.number().min(0, "El precio no puede ser negativo"),
@@ -14,10 +27,13 @@ const productoSchema = z.object({
   activo: z.boolean().default(true),
 });
 
-// GET: Traer productos con imágenes
-export async function GET() {
+export async function GET(req: Request) {
+  const localId = await getLocalId(req);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
   try {
     const categorias = await prisma.categoria.findMany({
+      where: { localId: localId }, // <--- FILTRO DE LOCAL
       include: {
         productos: {
           orderBy: { orden: 'asc' }
@@ -32,12 +48,13 @@ export async function GET() {
   }
 }
 
-// POST: Crear producto con imagen
 export async function POST(req: Request) {
+  const localId = await getLocalId(req);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
   try {
     const body = await req.json();
 
-    // Validar con Zod
     const resultado = productoSchema.safeParse(body);
 
     if (!resultado.success) {
@@ -46,7 +63,6 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Crear producto con imagen
     const nuevoProducto = await prisma.producto.create({
       data: {
         nombre: resultado.data.nombre,
@@ -55,6 +71,7 @@ export async function POST(req: Request) {
         descripcion: resultado.data.descripcion || "",
         imagen: resultado.data.imagen || null,
         activo: resultado.data.activo,
+        localId: localId // <--- ASIGNACIÓN AUTOMÁTICA
       }
     });
 

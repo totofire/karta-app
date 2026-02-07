@@ -1,13 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { jwtVerify } from "jose";
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function getLocalId(req: Request): Promise<number | null> {
+  const tokenCookie = req.headers.get("cookie")?.split("; ").find(c => c.startsWith("token="));
+  if (!tokenCookie) return null;
+  const token = tokenCookie.split("=")[1];
   try {
-    // 1. Buscamos pedidos activos
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
+    const { payload } = await jwtVerify(token, secret);
+    return payload.localId as number;
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(req: Request) {
+  const localId = await getLocalId(req);
+  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  try {
     const pedidos = await prisma.pedido.findMany({
       where: { 
+        localId: localId, // <--- FILTRO POR LOCAL
         estado: { notIn: ['ENTREGADO', 'CANCELADO'] } 
       },
       include: {
@@ -25,11 +42,7 @@ export async function GET() {
       orderBy: { fecha: 'asc' }
     });
 
-    // 2. Filtramos para la BARRA
     const pedidosBarra = pedidos.map(p => {
-      // Nos quedamos con los items que:
-      // A) NO son de cocina (imprimirCocina === false) -> Bebidas, Postres, etc.
-      // B) Todavía no se entregaron (estado === 'PENDIENTE')
       const itemsBarraPendientes = p.items.filter(item => 
           item.producto.categoria.imprimirCocina === false &&
           item.estado === 'PENDIENTE'
@@ -37,7 +50,6 @@ export async function GET() {
       
       return { ...p, items: itemsBarraPendientes };
     })
-    // 3. Limpiamos pedidos vacíos
     .filter(p => p.items.length > 0);
 
     return NextResponse.json(pedidosBarra);

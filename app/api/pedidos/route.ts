@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Define el tipo para los productos que vienen del frontend
 interface ProductoRequest {
   productoId: number;
   cantidad: number;
@@ -18,7 +17,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan datos del pedido" }, { status: 400 });
     }
 
-    // 2. BUSCAR SESIÓN
+    // 2. BUSCAR SESIÓN (y traemos la mesa para saber de qué LOCAL es)
     const sesion = await prisma.sesion.findUnique({
       where: { tokenEfimero },
       include: { mesa: true }
@@ -35,31 +34,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Sesión expirada. Escaneá QR nuevo." }, { status: 410 });
     }
 
-    // 4. BUSCAR PRECIOS REALES
+    // 🔥 DATO CLAVE: El localId viene de la mesa, no de una cookie de usuario
+    const localIdDelBar = sesion.mesa.localId;
+
+    // 4. BUSCAR PRECIOS REALES (Asegurando que sean productos de ESTE local)
     const idsProductos = productos.map((p: ProductoRequest) => p.productoId);
     
     const productosDb = await prisma.producto.findMany({
-      where: { id: { in: idsProductos } }
+      where: { 
+        id: { in: idsProductos },
+        localId: localIdDelBar // <--- SEGURIDAD: Solo productos de este bar
+      }
     });
 
     // 5. ARMAR ITEMS
     const itemsParaGuardar = productos.map((prodFront: ProductoRequest) => {
-      
-      // 🔥 CORRECCIÓN AQUÍ: Agregamos (p: any) para callar a TypeScript
+      // Verificamos que el producto exista en la lista aprobada
       const infoReal = productosDb.find((p: any) => p.id === prodFront.productoId);
       
+      if (!infoReal) return null; // Si intenta pedir un producto de otro bar, lo ignoramos
+
       return {
         productoId: prodFront.productoId,
         cantidad: prodFront.cantidad,
-        precio: infoReal ? infoReal.precio : 0,
+        precio: infoReal.precio,
         observaciones: prodFront.observaciones || ""
       };
-    });
+    }).filter((item: any) => item !== null); // Filtramos nulos
 
-    // 6. GUARDAR PEDIDO
+    if (itemsParaGuardar.length === 0) {
+        return NextResponse.json({ error: "Productos no válidos para este local" }, { status: 400 });
+    }
+
+    // 6. GUARDAR PEDIDO (Inyectando localId)
     const nuevoPedido = await prisma.pedido.create({
       data: {
         sesionId: sesion.id,
+        localId: localIdDelBar, // <--- IMPORTANTÍSIMO para que la cocina lo vea
         nombreCliente: nombreCliente || "Anónimo",
         estado: "PENDIENTE",
         items: {

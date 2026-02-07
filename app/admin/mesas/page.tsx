@@ -31,7 +31,6 @@ export default function MesasPage() {
     sector: "",
   });
 
-  // 🔴 CAMBIO 1: Definimos que pueden ser números O comillas vacías ("")
   const [rapida, setRapida] = useState<{ cantidad: number | ""; inicio: number | ""; sector: string }>({ 
     cantidad: 10, 
     inicio: 1, 
@@ -54,19 +53,40 @@ export default function MesasPage() {
         fetch("/api/admin/sectores"),
       ]);
 
+      // 🔴 VALIDACIÓN CRÍTICA: Verificar que la respuesta sea exitosa
+      if (!resMesas.ok) {
+        toast.error("Error cargando mesas");
+        return;
+      }
+
       const dataMesas = await resMesas.json();
-      setMesas(dataMesas);
+      
+      // 🔴 VALIDACIÓN CRÍTICA: Asegurar que sea un array
+      if (Array.isArray(dataMesas)) {
+        setMesas(dataMesas);
+        
+        // Calcular siguiente número sugerido
+        const ultimoNumero = dataMesas.reduce((max: number, m: any) => {
+          const match = m.nombre.match(/(\d+)/);
+          return match ? Math.max(max, parseInt(match[0])) : max;
+        }, 0);
+        setRapida((prev) => ({ ...prev, inicio: ultimoNumero + 1 }));
+      } else {
+        setMesas([]);
+        toast.error("Formato de datos incorrecto");
+      }
 
-      if (resSectores.ok) setSectores(await resSectores.json());
+      if (resSectores.ok) {
+        const dataSectores = await resSectores.json();
+        if (Array.isArray(dataSectores)) {
+          setSectores(dataSectores);
+        }
+      }
 
-      // Calcular siguiente número sugerido
-      const ultimoNumero = dataMesas.reduce((max: number, m: any) => {
-        const match = m.nombre.match(/(\d+)/);
-        return match ? Math.max(max, parseInt(match[0])) : max;
-      }, 0);
-      setRapida((prev) => ({ ...prev, inicio: ultimoNumero + 1 }));
     } catch (error) {
+      console.error("Error en cargar():", error);
       toast.error("Error cargando datos");
+      setMesas([]); // 🔴 Asegurar que siempre sea array
     }
   };
 
@@ -121,7 +141,6 @@ export default function MesasPage() {
   const crearRapida = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 🔴 Validación extra por si quedó vacío
     if (rapida.cantidad === "" || rapida.inicio === "") {
         return toast.error("Ingresá cantidades válidas");
     }
@@ -376,7 +395,6 @@ export default function MesasPage() {
                     onChange={(e) =>
                       setRapida({
                         ...rapida,
-                        // 🔴 CAMBIO 2: Esto ahora es válido porque el estado acepta string
                         cantidad: e.target.value === "" ? "" : Number(e.target.value),
                       })
                     }

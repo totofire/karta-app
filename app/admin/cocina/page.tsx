@@ -42,15 +42,23 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
   );
 };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+// Fetcher seguro que devuelve array vacío si hay error
+const fetcher = (url: string) => fetch(url).then(async (res) => {
+    if (!res.ok) return [];
+    return res.json();
+});
 
 // --- PÁGINA PRINCIPAL ---
 
 export default function CocinaPage() {
-  const { data: pedidos = [], mutate } = useSWR("/api/cocina", fetcher, {
+  const { data: pedidosRaw = [], mutate } = useSWR("/api/cocina", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
+    fallbackData: []
   });
+
+  // Aseguramos que pedidos sea un array
+  const pedidos = Array.isArray(pedidosRaw) ? pedidosRaw : [];
 
   // Función de impresión térmica
   const imprimirComanda = async (p: any) => {
@@ -97,7 +105,7 @@ export default function CocinaPage() {
     }
 
     if (!p.impreso) {
-        await fetch(`/api/pedidos/${p.id}`, {
+        await fetch(`/api/admin/pedidos/${p.id}`, { // Corregido endpoint
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ impreso: true }),
