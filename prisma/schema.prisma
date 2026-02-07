@@ -10,89 +10,43 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model Mesa {
-  id        Int      @id @default(autoincrement())
-  nombre    String
-  qr_token  String   @unique
-  activo    Boolean  @default(true)
-  sector    String   @default("General")
-  
-  posX      Int      @default(0)
-  posY      Int      @default(0)
-  
-  sesiones  Sesion[]
+// --------------------------------------
+// 1. DEFINICIÓN DE ROLES Y ESTADOS
+// --------------------------------------
 
-  @@index([activo, sector])
+enum Rol {
+  SUPER_ADMIN // Vos: Ves todos los locales y métricas globales
+  ADMIN       // Dueño: Ve y configura SU local
+  MOZO        // Empleado: Opera mesas/cocina/barra, no configura
 }
 
-model Sesion {
-  id          Int       @id @default(autoincrement())
-  mesaId      Int
-  mesa        Mesa      @relation(fields: [mesaId], references: [id])
-  fechaInicio DateTime  @default(now())
-  fechaFin    DateTime?
-  totalVenta  Float     @default(0)
-  pedidos     Pedido[]
-  nombreHost  String?
-
-  tokenEfimero String?   @unique  // Token rotativo único
-  expiraEn     DateTime?           // Cuándo expira este token
-  solicitaCuenta DateTime?
-  // 🚀 ÍNDICE CRÍTICO
-  @@index([mesaId, fechaFin]) // Para encontrar la sesión activa de una mesa al instante
+enum EstadoLocal {
+  ACTIVO      // Local operativo, todo funciona
+  SUSPENDIDO  // Falta de pago: Admin bloqueado, QR muestra "Servicio interrumpido"
+  BAJA        // Cliente canceló: Acceso revocado, datos guardados (soft delete)
+  DEMO        // Periodo de prueba: Funcionalidad completa por tiempo limitado
 }
 
-model Categoria {
-  id             Int        @id @default(autoincrement())
-  nombre         String
-  orden          Int        @default(0)
-  imprimirCocina Boolean    @default(true)
-  productos      Producto[]
-}
-
-model Producto {
-  id          Int          @id @default(autoincrement())
-  nombre      String
-  descripcion String?
-  precio      Float
-  imagen      String?
-  activo      Boolean      @default(true)
-  orden       Int          @default(0)
-  categoriaId Int
-  categoria   Categoria    @relation(fields: [categoriaId], references: [id])
-  items       ItemPedido[]
-
-  // 🚀 ÍNDICE PARA LA CARTA
-  @@index([categoriaId, activo, orden]) // Carga del menú ultra-rápida
-}
-
-model Pedido {
+model Local {
   id            Int          @id @default(autoincrement())
-  sesionId      Int
-  sesion        Sesion       @relation(fields: [sesionId], references: [id])
-  nombreCliente String?
-  estado        String       @default("PENDIENTE") 
-  fecha         DateTime     @default(now())
-  impreso       Boolean      @default(false) // <--- NUEVO CAMPO
-  items         ItemPedido[]
-
-  @@index([estado, fecha])
-  @@index([sesionId])
-}
-
-model ItemPedido {
-  id          Int      @id @default(autoincrement())
-  cantidad    Int
-  precio      Float
-  observaciones String?
+  nombre        String
+  direccion     String?
+  slug          String?      @unique // Ej: "bar-de-tito"
   
-  // NUEVO CAMPO:
-  estado      String   @default("PENDIENTE") // "PENDIENTE", "ENTREGADO"
+  estado        EstadoLocal  @default(ACTIVO) // 🔥 Control maestro del servicio
+  notasAdmin    String?      // Notas internas tuyas (ej: "Debe mayo")
+  
+  fechaAlta     DateTime     @default(now())
 
-  pedidoId    Int
-  pedido      Pedido   @relation(fields: [pedidoId], references: [id])
-  productoId  Int
-  producto    Producto @relation(fields: [productoId], references: [id])
+  // Relaciones: Un local es dueño de todo esto
+  usuarios      Usuario[]
+  mesas         Mesa[]
+  sectores      Sector[]
+  categorias    Categoria[]
+  productos     Producto[]
+  sesiones      Sesion[]
+  pedidos       Pedido[]
+  configuracion Configuracion?
 }
 
 model Usuario {
@@ -100,19 +54,159 @@ model Usuario {
   nombre    String
   email     String   @unique
   password  String
-  rol       String   @default("ADMIN")
+  
+  // Seguridad y Tenancy
+  rol       Rol      @default(ADMIN)
+  activo    Boolean  @default(true) // 🔥 Para bloquear empleados individuales sin borrarlos
+  
+  localId   Int?     // Es opcional porque el SUPER_ADMIN no tiene local
+  local     Local?   @relation(fields: [localId], references: [id])
+  
   fechaAlta DateTime @default(now())
+
+  @@index([localId])
 }
 
-model Sector {
-  id     Int    @id @default(autoincrement())
-  nombre String @unique
-  orden  Int    @default(0)
-}
+// --------------------------------------
+// 2. CONFIGURACIÓN E INFRAESTRUCTURA
+// --------------------------------------
 
 model Configuracion {
-  id           Int     @id @default(1)
+  id           Int     @id @default(autoincrement())
   horaApertura String  @default("08:00")
   horaCierre   String  @default("00:00")
   cajaAbierta  Boolean @default(true)
+  
+  // Relación 1 a 1 con Local
+  localId      Int     @unique
+  local        Local   @relation(fields: [localId], references: [id])
+}
+
+model Sector {
+  id      Int    @id @default(autoincrement())
+  nombre  String
+  orden   Int    @default(0)
+
+  localId Int
+  local   Local  @relation(fields: [localId], references: [id])
+
+  @@unique([localId, nombre]) 
+}
+
+model Mesa {
+  id       Int     @id @default(autoincrement())
+  nombre   String
+  qr_token String  @unique
+  activo   Boolean @default(true)
+  sector   String  @default("General") 
+  
+  posX     Int     @default(0)
+  posY     Int     @default(0)
+  
+  localId  Int
+  local    Local   @relation(fields: [localId], references: [id])
+  
+  sesiones Sesion[]
+
+  @@index([localId, activo])
+}
+
+// --------------------------------------
+// 3. MENÚ (PRODUCTOS Y CATEGORÍAS)
+// --------------------------------------
+
+model Categoria {
+  id             Int        @id @default(autoincrement())
+  nombre         String
+  orden          Int        @default(0)
+  imprimirCocina Boolean    @default(true)
+  
+  localId        Int
+  local          Local      @relation(fields: [localId], references: [id])
+  
+  productos      Producto[]
+  
+  @@index([localId, orden])
+}
+
+model Producto {
+  id          Int     @id @default(autoincrement())
+  nombre      String
+  descripcion String?
+  precio      Float
+  imagen      String?
+  activo      Boolean @default(true)
+  orden       Int     @default(0)
+  
+  categoriaId Int
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  
+  localId     Int
+  local       Local     @relation(fields: [localId], references: [id])
+  
+  items       ItemPedido[]
+
+  @@index([localId, categoriaId, activo])
+}
+
+// --------------------------------------
+// 4. OPERATIVA (PEDIDOS Y SESIONES)
+// --------------------------------------
+
+model Sesion {
+  id             Int       @id @default(autoincrement())
+  
+  mesaId         Int
+  mesa           Mesa      @relation(fields: [mesaId], references: [id])
+  
+  localId        Int       // Vital para reportes de venta por local
+  local          Local     @relation(fields: [localId], references: [id])
+
+  fechaInicio    DateTime  @default(now())
+  fechaFin       DateTime?
+  totalVenta     Float     @default(0)
+  nombreHost     String?
+
+  tokenEfimero   String?   @unique
+  expiraEn       DateTime?
+  solicitaCuenta DateTime?
+
+  pedidos        Pedido[]
+
+  @@index([localId, fechaFin]) 
+  @@index([mesaId, fechaFin])
+}
+
+model Pedido {
+  id            Int          @id @default(autoincrement())
+  
+  sesionId      Int
+  sesion        Sesion       @relation(fields: [sesionId], references: [id])
+  
+  localId       Int          // Desnormalización para filtrar pedidos por local rápidamente
+  local         Local        @relation(fields: [localId], references: [id])
+
+  nombreCliente String?
+  estado        String       @default("PENDIENTE") // PENDIENTE, EN_PREPARACION, ENTREGADO, CANCELADO
+  fecha         DateTime     @default(now())
+  impreso       Boolean      @default(false)
+  
+  items         ItemPedido[]
+
+  @@index([localId, estado]) // Para KDS (Cocina/Barra) del local específico
+  @@index([sesionId])
+}
+
+model ItemPedido {
+  id            Int      @id @default(autoincrement())
+  cantidad      Int
+  precio        Float    // Guardamos el precio al momento de la compra (histórico)
+  observaciones String?
+  estado        String   @default("PENDIENTE") // PENDIENTE, ENTREGADO
+
+  pedidoId      Int
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id])
+  
+  productoId    Int
+  producto      Producto @relation(fields: [productoId], references: [id])
 }

@@ -3,10 +3,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import toast from "react-hot-toast";
-import { KeyRound, ArrowRight, Mail } from "lucide-react"; // Agregamos ícono Mail
+import { Lock, Mail } from "lucide-react";
 
 export default function LoginPage() {
-  // Ahora guardamos email y password
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -14,11 +13,10 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.email || !formData.password) {
-      return toast.error("Completá todos los datos");
+      return toast.error("Completá todos los datos", { duration: 4000 });
     }
 
     setLoading(true);
-    // Enviamos email y password a la API
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -26,10 +24,13 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
-      toast.success("¡Bienvenido, Jefe! 🚀");
-      router.push("/admin");
+      toast.success("Bienvenido, Jefe", { duration: 2000 });
+      setTimeout(() => {
+        toast.dismiss(); // Limpia todos los toasts
+        router.push("/admin");
+      }, 2000);
     } else {
-      toast.error("Datos incorrectos 🚫");
+      toast.error("Datos incorrectos", { duration: 4000 });
       setLoading(false);
     }
   };
@@ -65,7 +66,7 @@ export default function LoginPage() {
           {/* CAMPO PASSWORD */}
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <KeyRound size={20} />
+              <Lock size={20} />
             </div>
             <input
               type="password"
@@ -81,7 +82,6 @@ export default function LoginPage() {
             className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
           >
             {loading ? "Entrando..." : "Iniciar Sesión"}
-            {!loading && <ArrowRight size={20} />}
           </button>
         </form>
 
