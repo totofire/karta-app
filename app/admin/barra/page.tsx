@@ -7,7 +7,8 @@ import {
   GlassWater, // Ícono de copa/bebida
   Clock, 
   Printer, 
-  AlertCircle
+  AlertCircle,
+  XCircle // <--- Icono para cancelar
 } from "lucide-react";
 
 // --- COMPONENTES AUXILIARES ---
@@ -43,7 +44,6 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function BarraPage() {
-  // Usamos la nueva API de barra
   const { data: pedidos = [], mutate } = useSWR("/api/barra", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
@@ -86,12 +86,8 @@ export default function BarraPage() {
     }
   };
 
+  // --- LÓGICA DE DESPACHO (LISTO) ---
   const completarPedido = async (id: number) => {
-    // En barra, al completar, asumimos que "ENTREGAMOS" la bebida.
-    // OJO: Si compartís el pedido con cocina, cambiar el estado global a "ENTREGADO" podría borrarlo de la cocina también.
-    // ESTRATEGIA SIMPLE: Si es mixto, solo lo ocultamos localmente o usamos un estado intermedio. 
-    // Para simplificar: Marcamos entregado (asumiendo que cocina va por su lado o que son pedidos distintos).
-    
     const pedidosNuevos = pedidos.filter((p: any) => p.id !== id);
     mutate(pedidosNuevos, false);
 
@@ -99,7 +95,7 @@ export default function BarraPage() {
       fetch(`/api/pedidos/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: "ENTREGADO" }), // O Podríamos usar otro estado si quisiéramos
+        body: JSON.stringify({ estado: "ENTREGADO" }), 
       }).then(() => mutate()),
       {
         loading: 'Despachando bebidas...',
@@ -109,10 +105,35 @@ export default function BarraPage() {
     );
   };
 
+  // --- LÓGICA DE CANCELACIÓN (NUEVO) ---
+  const cancelarPedido = async (pedidoId: number) => {
+    if (!confirm("¿Cancelar pedido de bebidas?")) return;
+
+    // UI Optimista
+    const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
+    mutate(pedidosRestantes, false);
+
+    toast.promise(
+        fetch('/api/admin/cancelar', { // Usamos el mismo endpoint genérico
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pedidoId })
+        }).then(async (res) => {
+            if (!res.ok) throw new Error("Error al cancelar");
+            await mutate();
+        }),
+        {
+            loading: 'Cancelando bebidas...',
+            success: 'Bebida cancelada 🗑️',
+            error: 'No se pudo cancelar',
+        }
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6 w-full max-w-[100vw] overflow-x-hidden">
       
-      {/* HEADER AZUL (Diferente a Cocina) */}
+      {/* HEADER AZUL */}
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6 border-b border-slate-700 pb-6">
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 w-12 h-12 flex items-center justify-center rounded-xl shadow-lg shadow-blue-900/50">
@@ -141,7 +162,7 @@ export default function BarraPage() {
           <p className="text-white text-lg font-medium">Nada para preparar</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
           {pedidos.map((p: any) => (
             <div 
               key={p.id} 
@@ -153,7 +174,7 @@ export default function BarraPage() {
                     Mesa {p.sesion.mesa.nombre}
                   </h3>
                   <p className="text-slate-500 text-xs font-bold uppercase truncate max-w-[120px]">
-                    {p.nombreCliente}
+                    {p.nombreCliente || "Cliente"}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -172,21 +193,23 @@ export default function BarraPage() {
                       {item.cantidad}
                     </span>
                     <div className="flex-1">
-                       <p className="font-bold text-lg text-slate-800 leading-tight">
-                         {item.producto.nombre}
-                       </p>
-                       {/* Notas en barra (ej: con hielo) */}
-                       {item.observaciones && (
-                         <span className="text-xs text-blue-600 font-bold italic block mt-1">
-                           {item.observaciones}
-                         </span>
-                       )}
+                        <p className="font-bold text-lg text-slate-800 leading-tight">
+                          {item.producto.nombre}
+                        </p>
+                        {item.observaciones && (
+                          <span className="text-xs text-blue-600 font-bold italic block mt-1">
+                            {item.observaciones}
+                          </span>
+                        )}
                     </div>
                   </div>
                 ))}
               </div>
 
+              {/* FOOTER ACCIONES */}
               <div className="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
+                
+                {/* BOTÓN IMPRIMIR (Secundario) */}
                 <button 
                   onClick={() => imprimirComanda(p)}
                   className="p-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors"
@@ -194,6 +217,17 @@ export default function BarraPage() {
                 >
                   <Printer size={20} />
                 </button>
+
+                {/* BOTÓN CANCELAR (Secundario Rojo) */}
+                <button 
+                    onClick={() => cancelarPedido(p.id)}
+                    className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                    title="Cancelar Pedido"
+                >
+                    <XCircle size={20} />
+                </button>
+
+                {/* BOTÓN LISTO (Primario Azul) */}
                 <button 
                   onClick={() => completarPedido(p.id)}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide"

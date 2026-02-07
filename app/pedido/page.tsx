@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import MenuInterface from "@/app/mesa/[token]/MenuInterface";
+import ClienteListener from "@/components/ClienteListener";
+import { Store, ScanLine } from "lucide-react"; 
 
-// Forzamos dinamismo para evitar caché en los pedidos
+// Forzamos dinamismo para evitar caché y tener datos frescos siempre
 export const dynamic = 'force-dynamic';
 
 export default async function PedidoPage({
@@ -15,52 +17,76 @@ export default async function PedidoPage({
 
   if (!tokenEfimero) return notFound();
 
-  // 1. Validar la sesión por el TOKEN EFÍMERO y traer HISTORIAL
+  // 1. Validar la sesión y traer pedidos NO cancelados
   const sesion = await prisma.sesion.findUnique({
     where: { tokenEfimero },
     include: { 
       mesa: true,
-      // 👇 AGREGADO: Traer pedidos anteriores para "Mi Cuenta"
       pedidos: {
-        where: { estado: { not: "CANCELADO" } },
+        where: { estado: { not: "CANCELADO" } }, 
         include: {
           items: {
             include: {
-              producto: true // Necesario para mostrar nombres y precios en el resumen
+              producto: true 
             }
           }
-        }
+        },
+        orderBy: { fecha: 'desc' }
       }
     },
   });
 
-  // 2. Si no existe, error
+  // 2. Validaciones de seguridad (Enlace Caducado)
   if (!sesion) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-red-50 p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md text-center">
-          <div className="text-6xl mb-4">🚫</div>
-          <h2 className="text-2xl font-black text-red-600 mb-2">Link Inválido</h2>
-          <p className="text-gray-700">Este enlace ya no sirve. Por favor, escaneá el QR de la mesa nuevamente.</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB] p-6">
+        <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm text-center border border-gray-200 flex flex-col items-center relative overflow-hidden">
+          
+          {/* Decoración superior con tus colores */}
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#A62E2E] to-[#8C2626]"></div>
+
+          {/* Icono con fondo sutil usando tu color */}
+          <div className="w-20 h-20 bg-[#A62E2E]/10 rounded-full flex items-center justify-center mb-6 border border-[#A62E2E]/20">
+            <ScanLine size={40} className="text-[#A62E2E]" />
+          </div>
+          
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Enlace Caducado</h2>
+          <p className="text-gray-500 font-medium leading-relaxed">
+            Por seguridad, este QR ya no es válido. <br/>
+            <span className="text-[#A62E2E] font-bold">Por favor, escaneá la mesa nuevamente.</span>
+          </p>
         </div>
       </div>
     );
   }
 
-  // 3. Si la mesa ya se cobró, bloqueamos
+  // 3. Validación de Mesa Cerrada (Cuenta Cobrada)
   if (sesion.fechaFin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-blue-50 p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-black text-blue-600 mb-2">Mesa Cerrada</h2>
-          <p className="text-gray-700">Esta cuenta ya fue cerrada. Para pedir de nuevo, escaneá el QR.</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
+        <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-sm text-center border border-slate-800 flex flex-col items-center relative overflow-hidden">
+          
+          {/* Decoración de fondo (Gradiente con tus colores y opacidad solicitada) */}
+          <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-[#A62E2E] to-[#8C2626]"></div>
+          
+          <div className="w-24 h-24 bg-[#A62E2E]/10 rounded-full flex items-center justify-center mb-6 shadow-inner border border-[#A62E2E]/20">
+            <Store size={48} className="text-[#A62E2E]" />
+          </div>
+          
+          <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">¡Muchas Gracias!</h2>
+          <p className="text-slate-500 font-medium leading-relaxed mb-6">
+            Tu cuenta ya fue cobrada. <br/>Esperamos que hayas disfrutado tu visita.
+          </p>
+          
+          <div className="text-xs text-[#A62E2E] font-black uppercase tracking-widest border-t border-gray-100 pt-4 w-full">
+            KARTA APP
+          </div>
         </div>
       </div>
     );
   }
 
-  // 4. Cargar productos del menú
+  // 3. Cargar el menú (Categorías y Productos)
   const categorias = await prisma.categoria.findMany({
     include: {
       productos: {
@@ -71,13 +97,17 @@ export default async function PedidoPage({
     orderBy: { orden: 'asc' }
   });
 
-  // 5. Renderizamos pasando los pedidos históricos
+  // 4. Renderizar: Listener + Interfaz
   return (
-    <MenuInterface 
-      mesa={sesion.mesa} 
-      categorias={categorias} 
-      tokenEfimero={tokenEfimero}
-      pedidosHistoricos={sesion.pedidos || []} // 👈 Pasamos el historial aquí
-    />
+    <>
+      <ClienteListener sesionId={sesion.id} />
+
+      <MenuInterface 
+        mesa={sesion.mesa} 
+        categorias={categorias} 
+        tokenEfimero={tokenEfimero}
+        pedidosHistoricos={sesion.pedidos} 
+      />
+    </>
   );
 }

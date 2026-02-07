@@ -21,8 +21,10 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
     if (!pedidosHistoricos) return { itemsHistoricos: [], totalHistorico: 0 };
 
-    pedidosHistoricos.forEach((pedido: any) => {
-      pedido.items.forEach((item: any) => {
+    pedidosHistoricos
+      .filter((p: any) => p.estado !== "CANCELADO") // <--- FILTRO DE SEGURIDAD 🛡️
+      .forEach((pedido: any) => {
+          pedido.items.forEach((item: any) => {
         const key = item.producto.id;
         const subtotal = item.precio * item.cantidad;
         total += subtotal;

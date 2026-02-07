@@ -7,7 +7,8 @@ import {
   ChefHat, 
   Clock, 
   Printer, 
-  AlertCircle 
+  AlertCircle,
+  XCircle
 } from "lucide-react";
 
 // --- COMPONENTES AUXILIARES ---
@@ -46,9 +47,6 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 // --- PÁGINA PRINCIPAL ---
 
 export default function CocinaPage() {
-  // Nota: Asegúrate de que /api/cocina devuelva SOLO los items de cocina pendientes
-  // Si tu API actual devuelve todo el pedido, el filtro visual se hará aquí, 
-  // pero lo ideal es que el backend ya filtre.
   const { data: pedidos = [], mutate } = useSWR("/api/cocina", fetcher, {
     refreshInterval: 5000,
     revalidateOnFocus: true,
@@ -56,7 +54,6 @@ export default function CocinaPage() {
 
   // Función de impresión térmica
   const imprimirComanda = async (p: any) => {
-    // 1. Abrir ventana de impresión (formato ticket 80mm)
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
         ventana.document.write(`
@@ -99,7 +96,6 @@ export default function CocinaPage() {
         ventana.close();
     }
 
-    // 2. Marcar como impreso en la base de datos
     if (!p.impreso) {
         await fetch(`/api/pedidos/${p.id}`, {
             method: "PATCH",
@@ -111,9 +107,9 @@ export default function CocinaPage() {
     }
   };
 
-  // --- LÓGICA DE DESPACHO POR SECTOR (NUEVO) ---
+  // --- LÓGICA DE DESPACHO ---
   const despacharCocina = async (pedidoId: number) => {
-    // UI Optimista: Eliminamos el pedido de la lista visualmente al instante
+    // UI Optimista
     const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
     mutate(pedidosRestantes, false);
 
@@ -121,13 +117,9 @@ export default function CocinaPage() {
       fetch('/api/admin/despachar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          pedidoId, 
-          sector: 'cocina' // <--- ESTO ES LA CLAVE: Solo despacha items de cocina
-        })
+        body: JSON.stringify({ pedidoId, sector: 'cocina' })
       }).then(async (res) => {
         if (!res.ok) throw new Error("Error al despachar");
-        // Revalidamos los datos reales del servidor
         await mutate();
       }),
       {
@@ -138,8 +130,33 @@ export default function CocinaPage() {
     );
   };
 
+  // --- LÓGICA DE CANCELACIÓN ---
+  const cancelarPedido = async (pedidoId: number) => {
+    if (!confirm("¿Estás seguro de cancelar este pedido? Se eliminará de la lista.")) return;
+
+    // UI Optimista
+    const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
+    mutate(pedidosRestantes, false);
+
+    toast.promise(
+        fetch('/api/admin/cancelar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pedidoId })
+        }).then(async (res) => {
+            if (!res.ok) throw new Error("Error al cancelar");
+            await mutate();
+        }),
+        {
+            loading: 'Cancelando pedido...',
+            success: 'Pedido cancelado 🗑️',
+            error: 'No se pudo cancelar',
+        }
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6 w-full max-w-[100vw] overflow-x-hidden">
       
       {/* HEADER TIPO KDS */}
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6 border-b border-slate-700 pb-6">
@@ -172,7 +189,7 @@ export default function CocinaPage() {
           <p className="text-white text-lg font-medium">Todo despachado</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
           {pedidos.map((p: any) => (
             <div 
               key={p.id} 
@@ -225,25 +242,32 @@ export default function CocinaPage() {
 
               {/* FOOTER ACCIONES */}
               <div className="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
+                
+                {/* BOTÓN IMPRIMIR (Secundario) */}
                 <button 
                   onClick={() => imprimirComanda(p)}
-                  className={`flex-1 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors border-2 
-                    ${p.impreso 
-                        ? "bg-transparent border-slate-300 text-slate-400 hover:text-slate-600 hover:border-slate-400" 
-                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm"
-                    }`}
+                  className="p-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors"
                   title="Imprimir comanda"
                 >
-                  <Printer size={18} />
-                  {p.impreso ? "Re-Imprimir" : "Imprimir"}
+                  <Printer size={20} />
                 </button>
-                
+
+                {/* BOTÓN CANCELAR (Secundario Rojo) */}
                 <button 
-                  onClick={() => despacharCocina(p.id)} // <--- NUEVA FUNCIÓN
-                  className="flex-[2] bg-slate-900 hover:bg-green-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide group"
+                    onClick={() => cancelarPedido(p.id)}
+                    className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                    title="Cancelar Pedido"
                 >
-                  <CheckCircle2 size={18} className="group-hover:scale-110 transition-transform"/>
-                  LISTO
+                    <XCircle size={20} />
+                </button>
+
+                {/* BOTÓN LISTO (Primario - Slate) */}
+                <button 
+                    onClick={() => despacharCocina(p.id)} 
+                    className="flex-1 bg-slate-900 hover:bg-green-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide group"
+                >
+                    <CheckCircle2 size={18} className="group-hover:scale-110 transition-transform"/>
+                    LISTO
                 </button>
               </div>
 

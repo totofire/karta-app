@@ -1,49 +1,50 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
 import { prisma } from "@/lib/prisma";
+
+// Forzamos dinamismo para que no cachee datos viejos
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const pedidos = await prisma.pedido.findMany({
-    where: { 
-      estado: { in: ['PENDIENTE', 'EN_PREPARACION'] } 
-    },
-    include: {
-      items: {
-        include: {
-          producto: {
-            include: { categoria: true } // IMPORTANTE: Traer la categoría para ver el flag
+  try {
+    // 1. Buscamos pedidos que NO estén terminados ni cancelados
+    const pedidos = await prisma.pedido.findMany({
+      where: { 
+        estado: { notIn: ['ENTREGADO', 'CANCELADO'] } 
+      },
+      include: {
+        items: {
+          include: {
+            producto: {
+              include: { categoria: true } // Necesitamos esto para saber si va a cocina
+            }
           }
+        },
+        sesion: {
+          include: { mesa: true }
         }
       },
-      sesion: {
-        include: { mesa: true }
-      }
-    },
-    orderBy: { fecha: 'asc' }
-  });
+      orderBy: { fecha: 'asc' }
+    });
 
-  // --- EL FILTRO MÁGICO ---
-  const pedidosFiltrados = pedidos.map(p => {
-    // 1. Nos quedamos solo con los items cuya categoría tiene 'imprimirCocina: true'
-    const itemsCocina = p.items.filter(item => item.producto.categoria.imprimirCocina === true);
-    
-    // 2. Devolvemos el pedido modificado
-    return { ...p, items: itemsCocina };
-  })
-  // 3. Si un pedido se quedó sin items (ej: era solo una Coca), lo borramos de la lista final
-  .filter(p => p.items.length > 0);
+    // 2. Filtramos en memoria para dejar SOLO lo que le interesa a la cocina
+    const pedidosCocina = pedidos.map(p => {
+      // Nos quedamos con los items que:
+      // A) Son de cocina (imprimirCocina === true)
+      // B) Todavía no se entregaron (estado === 'PENDIENTE')
+      const itemsCocinaPendientes = p.items.filter(item => 
+          item.producto.categoria.imprimirCocina === true && 
+          item.estado === 'PENDIENTE'
+      );
+      
+      // Devolvemos el pedido con la lista de items filtrada
+      return { ...p, items: itemsCocinaPendientes };
+    })
+    // 3. Si al pedido no le quedaron items pendientes para cocina, lo sacamos de la lista
+    .filter(p => p.items.length > 0);
 
-  return NextResponse.json(pedidosFiltrados);
-}
+    return NextResponse.json(pedidosCocina);
 
-// El POST dejalo igual
-export async function POST(req: Request) {
-  const { pedidoId, nuevoEstado } = await req.json();
-  await prisma.pedido.update({
-    where: { id: pedidoId },
-    data: { estado: nuevoEstado }
-  });
-  return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Error obteniendo comandas" }, { status: 500 });
+  }
 }
