@@ -58,11 +58,11 @@ export default async function Page({
             mesaId: mesa.id,
             tokenEfimero,
             expiraEn,
+            localId: mesa.localId // <--- 🔥 CORRECCIÓN: Agregamos el localId obligatorio
           },
         });
-        // Opcional: Logs del servidor
-        // console.log(`✨ Nueva sesión creada para Mesa: ${mesa.nombre} (ID: ${mesa.id})`);
     } catch (error) {
+        console.error("Error creando sesión:", error);
         return (
             <div className="min-h-screen flex items-center justify-center bg-white">
                 <p className="text-gray-500">Error iniciando sesión. Intenta escanear nuevamente.</p>
