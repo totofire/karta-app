@@ -10,10 +10,7 @@ export async function GET() {
 
   try {
     const mesas = await prisma.mesa.findMany({
-      where: { 
-        activo: true,
-        localId: localId
-      },
+      where: { activo: true, localId },
       select: {
         id: true,
         nombre: true,
@@ -29,7 +26,8 @@ export async function GET() {
             fechaInicio: true,
             solicitaCuenta: true, 
             pedidos: {
-              where: { estado: { not: "CANCELADO" } }, 
+              where: { estado: { not: "CANCELADO" } },
+              orderBy: { fecha: "desc" },
               select: {
                 fecha: true,
                 estado: true,
@@ -64,34 +62,33 @@ export async function GET() {
       };
 
       if (sesionActiva) {
-        const mapaDetalles = new Map();
+        const mapaDetalles = new Map<string, { producto: string; cantidad: number; precioUnitario: number; subtotal: number }>();
         let totalGeneral = 0;
 
-        sesionActiva.pedidos.forEach(pedido => {
-            pedido.items.forEach(item => {
-                const nombreProd = item.producto.nombre;
-                const subtotalItem = item.precio * item.cantidad;
-                totalGeneral += subtotalItem;
-
-                if (mapaDetalles.has(nombreProd)) {
-                    const existente = mapaDetalles.get(nombreProd);
-                    existente.cantidad += item.cantidad;
-                    existente.subtotal += subtotalItem;
-                } else {
-                    mapaDetalles.set(nombreProd, {
-                        producto: nombreProd,
-                        cantidad: item.cantidad,
-                        precioUnitario: item.precio,
-                        subtotal: subtotalItem
-                    });
-                }
-            });
-        });
+        for (const pedido of sesionActiva.pedidos) {
+          for (const item of pedido.items) {
+            const nombreProd = item.producto.nombre;
+            const subtotalItem = item.precio * item.cantidad;
+            totalGeneral += subtotalItem;
+            const existente = mapaDetalles.get(nombreProd);
+            if (existente) {
+              existente.cantidad += item.cantidad;
+              existente.subtotal += subtotalItem;
+            } else {
+              mapaDetalles.set(nombreProd, {
+                producto: nombreProd,
+                cantidad: item.cantidad,
+                precioUnitario: item.precio,
+                subtotal: subtotalItem,
+              });
+            }
+          }
+        }
 
         const detalles = Array.from(mapaDetalles.values());
-        const ultimoPedido = sesionActiva.pedidos.length > 0
-            ? new Date(sesionActiva.pedidos[sesionActiva.pedidos.length - 1].fecha)
-                .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const ultimoPedido =
+          sesionActiva.pedidos.length > 0
+            ? new Date(sesionActiva.pedidos[0].fecha).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : null;
 
         infoSesion = {

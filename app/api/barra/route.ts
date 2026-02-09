@@ -10,37 +10,37 @@ export async function GET() {
 
   try {
     const pedidos = await prisma.pedido.findMany({
-      where: { 
-        localId: localId, // <--- FILTRO POR LOCAL
-        estado: { notIn: ['ENTREGADO', 'CANCELADO'] } 
+      where: {
+        localId,
+        estado: { notIn: ["ENTREGADO", "CANCELADO"] },
       },
-      include: {
+      select: {
+        id: true,
+        nombreCliente: true,
+        fecha: true,
+        impreso: true,
         items: {
-          include: {
-            producto: {
-              include: { categoria: true }
-            }
-          }
+          where: {
+            estado: "PENDIENTE",
+            producto: { categoria: { imprimirCocina: false } },
+          },
+          select: {
+            cantidad: true,
+            observaciones: true,
+            producto: { select: { nombre: true } },
+          },
         },
         sesion: {
-          include: { mesa: true }
-        }
+          select: {
+            mesa: { select: { nombre: true } },
+          },
+        },
       },
-      orderBy: { fecha: 'asc' }
+      orderBy: { fecha: "asc" },
     });
 
-    const pedidosBarra = pedidos.map(p => {
-      const itemsBarraPendientes = p.items.filter(item => 
-          item.producto.categoria.imprimirCocina === false &&
-          item.estado === 'PENDIENTE'
-      );
-      
-      return { ...p, items: itemsBarraPendientes };
-    })
-    .filter(p => p.items.length > 0);
-
+    const pedidosBarra = pedidos.filter((p) => p.items.length > 0);
     return NextResponse.json(pedidosBarra);
-
   } catch (error) {
     return NextResponse.json({ error: "Error obteniendo bebidas" }, { status: 500 });
   }
