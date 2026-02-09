@@ -9,40 +9,97 @@ export async function POST(req: Request) {
   try {
     const { sesionId } = await req.json();
 
-    if (!sesionId) return NextResponse.json({ error: "Falta ID" }, { status: 400 });
+    if (!sesionId) return NextResponse.json({ error: "Falta ID de sesión" }, { status: 400 });
 
-    // 1. Buscamos la sesión asegurando que sea de MI local
-    const sesion = await prisma.sesion.findFirst({ // Cambiado a findFirst para usar filtros
-      where: { 
-        id: sesionId,
-        localId: localId // <--- SEGURIDAD
-      },
-      include: { pedidos: { include: { items: true } } }
+    // 🔥 INICIAMOS TRANSACCIÓN (Todo o nada)
+    const resultado = await prisma.$transaction(async (tx) => {
+
+      // 1. Buscar la sesión y sus pedidos para calcular el total REAL
+      // Validamos que sea de nuestro local (localId)
+      const sesion = await tx.sesion.findFirst({
+        where: { 
+          id: sesionId,
+          localId: localId 
+        },
+        include: { 
+          pedidos: { 
+            include: { items: true } 
+          } 
+        }
+      });
+
+      if (!sesion) throw new Error("Sesión no encontrada o no pertenece al local");
+
+      // 2. Calcular el total (Ignorando cancelados)
+      let totalFinal = 0;
+      
+      sesion.pedidos.forEach((pedido) => {
+        // Solo sumamos si el pedido NO está cancelado
+        if (pedido.estado !== "CANCELADO") {
+          pedido.items.forEach((item) => {
+             // Opcional: Si tus items individuales pueden cancelarse, agrega check aquí
+             // if (item.estado !== "CANCELADO") ...
+             totalFinal += item.precio * item.cantidad;
+          });
+        }
+      });
+
+      // 3. LIMPIEZA DE "ZOMBIS" (Cocina/Barra)
+      // Pasamos a ENTREGADO todo lo que haya quedado colgado (PENDIENTE/PREPARACION)
+      // para que desaparezca de las pantallas KDS.
+      
+      // Actualizar Pedidos
+      await tx.pedido.updateMany({
+        where: { 
+          sesionId: sesionId,
+          estado: { not: "CANCELADO" } // No revivimos lo cancelado
+        },
+        data: { estado: "ENTREGADO" }
+      });
+
+      // Actualizar Items individuales
+      await tx.itemPedido.updateMany({
+        where: { 
+          pedido: { sesionId: sesionId },
+          estado: { not: "CANCELADO" }
+        },
+        data: { estado: "ENTREGADO" }
+      });
+
+      // 4. CERRAR LA SESIÓN DEFINITIVAMENTE
+      const sesionCerrada = await tx.sesion.update({
+        where: { id: sesionId },
+        data: {
+          fechaFin: new Date(),        // Marca de tiempo final
+          totalVenta: totalFinal,      // Guardamos cuánto se facturó
+          solicitaCuenta: null,        // Apagamos la alerta de "Pide Cuenta"
+        }
+      });
+      
+      // Liberamos la mesa asociada para que pueda usarse de nuevo
+      // (Aunque la lógica principal es por sesión, esto ayuda si usas flags en Mesa)
+      await tx.mesa.update({
+        where: { id: sesion.mesaId },
+        data: { activo: true } 
+      });
+
+      return { total: totalFinal, fecha: sesionCerrada.fechaFin };
     });
 
-    if (!sesion) return NextResponse.json({ error: "Sesión no encontrada o ajena" }, { status: 404 });
+    return NextResponse.json({ 
+      success: true, 
+      recaudado: resultado.total,
+      fechaCierre: resultado.fecha
+    });
 
-    // 2. Calculamos el total
-    let totalFinal = 0;
+  } catch (error: any) {
+    console.error("❌ Error cerrando mesa:", error.message);
     
-    sesion.pedidos.forEach((p: any) => {
-      if (p.estado !== "CANCELADO") {
-        p.items.forEach((i: any) => totalFinal += i.precio * i.cantidad);
-      }
-    });
+    // Manejo de errores específico
+    if (error.message === "Sesión no encontrada o no pertenece al local") {
+        return NextResponse.json({ error: error.message }, { status: 404 });
+    }
 
-    // 3. CERRAMOS LA SESIÓN
-    await prisma.sesion.update({
-      where: { id: sesionId }, // Ya validamos arriba que es nuestra
-      data: {
-        fechaFin: new Date(),
-        totalVenta: totalFinal,
-      }
-    });
-
-    return NextResponse.json({ success: true, recaudado: totalFinal });
-  } catch (error) {
-    console.error("Error cerrando mesa:", error);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    return NextResponse.json({ error: "Error interno al cerrar mesa" }, { status: 500 });
   }
 }

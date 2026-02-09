@@ -8,102 +8,82 @@ import { BellRing, X } from 'lucide-react';
 
 export default function PedidosListener() {
   const router = useRouter();
-  const audioDing = useRef<HTMLAudioElement | null>(null);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
 
-  // ===== INICIALIZAR AUDIO DE PEDIDOS =====
+  // 1. INICIALIZAR AUDIO (Una sola vez)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    console.log('🍔 [PEDIDOS] Inicializando audio...');
+    // Crear instancia de audio
+    const audio = new Audio('/sounds/ding.mp3');
+    audio.preload = 'auto';
+    audio.volume = 1.0;
+    audioRef.current = audio;
 
-    // Verificar si ya fue habilitado
-    const wasEnabled = localStorage.getItem('pedidosAudioEnabled') === 'true';
-    if (wasEnabled) {
-      setAudioEnabled(true);
-    }
+    console.log('🍔 [PEDIDOS] Sistema de audio listo');
 
-    // Crear audio
-    audioDing.current = new Audio('/sounds/ding.mp3');
-    audioDing.current.preload = 'auto';
-    audioDing.current.volume = 1.0;
-
-    audioDing.current.onloadeddata = () => {
-      console.log('✅ [PEDIDOS] ding.mp3 cargado');
-    };
-
-    audioDing.current.onerror = () => {
-      console.error('❌ [PEDIDOS] Error al cargar ding.mp3');
-    };
-
-    return () => {
-      if (audioDing.current) {
-        audioDing.current.pause();
-        audioDing.current = null;
-      }
-    };
-  }, []);
-
-  // ===== DESBLOQUEAR AUDIO DE PEDIDOS =====
-  useEffect(() => {
-    const handleUserInteraction = async () => {
-      if (!audioEnabled && audioDing.current) {
-        try {
-          console.log('🔓 [PEDIDOS] Desbloqueando audio...');
-          audioDing.current.volume = 0.01;
-          await audioDing.current.play();
-          audioDing.current.pause();
-          audioDing.current.currentTime = 0;
-          audioDing.current.volume = 1.0;
-          setAudioEnabled(true);
-          localStorage.setItem('pedidosAudioEnabled', 'true');
-          console.log('✅ [PEDIDOS] Audio desbloqueado');
-        } catch (error) {
-          console.warn('⚠️ [PEDIDOS] No se pudo desbloquear:', error);
-        }
+    // Estrategia de desbloqueo (primer clic)
+    const unlockAudio = () => {
+      if (audioRef.current && !isAudioUnlocked) {
+        audioRef.current.play()
+          .then(() => {
+            audioRef.current?.pause();
+            audioRef.current!.currentTime = 0;
+            setIsAudioUnlocked(true);
+            console.log('🔓 [PEDIDOS] Audio desbloqueado');
+            
+            // Limpiamos los listeners una vez desbloqueado
+            document.removeEventListener('click', unlockAudio);
+            document.removeEventListener('touchstart', unlockAudio);
+          })
+          .catch((e) => {
+            // Si falla, es normal (el usuario no interactuó aún), seguimos esperando
+            console.log("Esperando interacción para audio...");
+          });
       }
     };
 
-    // Desbloquear con cualquier interacción
-    document.addEventListener('click', handleUserInteraction, { once: true });
-    
+    // Escuchamos cualquier interacción
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+
     return () => {
-      document.removeEventListener('click', handleUserInteraction);
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
     };
-  }, [audioEnabled]);
+  }, [isAudioUnlocked]);
 
-  // ===== LISTENER DE NUEVOS PEDIDOS =====
+  // 2. ESCUCHAR SUPABASE
   useEffect(() => {
-    console.log('🟢 [PEDIDOS] Iniciando listener...');
+    console.log('🟢 [PEDIDOS] Iniciando conexión...');
 
+    // CAMBIAMOS EL NOMBRE DEL CANAL PARA FORZAR RECONEXIÓN LIMPIA
     const channel = supabase
-      .channel('pedidos-listener')
+      .channel('pedidos-fix-v2') 
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'Pedido' },
-        async (payload) => {
-          console.log('🔔 [PEDIDOS] Nuevo pedido detectado:', payload.new);
+        (payload) => {
+          console.log('🔔 [NUEVO PEDIDO]', payload);
+
+          // Obtenemos los datos nuevos
+          const pedido = payload.new || {};
 
           // 1. Reproducir sonido
-          if (audioEnabled && audioDing.current) {
-            try {
-              audioDing.current.currentTime = 0;
-              await audioDing.current.play();
-              console.log('🔊 [PEDIDOS] Sonido reproducido');
-            } catch (error) {
-              console.error('❌ [PEDIDOS] Error al reproducir:', error);
-            }
+          if (audioRef.current) {
+            audioRef.current.play().catch(e => console.error("Audio bloqueado:", e));
           }
 
           // 2. Vibración
-          if ('vibrate' in navigator) {
-            navigator.vibrate([200, 100, 200]);
+          if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+             navigator.vibrate([200, 100, 200]);
           }
 
-          // 3. Notificación
-          mostrarNotificacion(payload.new);
+          // 3. Mostrar Toast (Diseño Clásico Verde)
+          mostrarNotificacion(pedido);
 
-          // 4. Refrescar
+          // 4. Refrescar la página para ver el pedido en la lista
           router.refresh();
         }
       )
@@ -112,17 +92,16 @@ export default function PedidosListener() {
       });
 
     return () => {
-      console.log('🔴 [PEDIDOS] Limpiando listener');
+      console.log('🔴 [PEDIDOS] Desconectando...');
       supabase.removeChannel(channel);
     };
-  }, [router, audioEnabled]);
+  }, [router]);
 
-  // ===== MOSTRAR NOTIFICACIÓN =====
+  // 3. DISEÑO VISUAL (El original que te gustaba)
   const mostrarNotificacion = (pedido: any) => {
     const titulo = "¡NUEVO PEDIDO! 🍔";
-    const texto = pedido?.id ? `Pedido #${pedido.id}` : `Revisar pedidos`;
+    const texto = pedido?.id ? `Pedido #${pedido.id}` : `Revisar listado`;
 
-    // Toast
     toast.custom((t) => (
       <div
         onClick={() => {
@@ -134,53 +113,30 @@ export default function PedidosListener() {
         } max-w-sm w-full bg-white shadow-2xl rounded-2xl cursor-pointer border-l-4 border-green-500 hover:shadow-green-200 transition-shadow`}
       >
         <div className="p-4 flex items-center gap-4">
+          {/* Ícono Verde Rebotando */}
           <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center shrink-0">
             <BellRing size={24} className="text-green-600 animate-bounce" strokeWidth={3} />
           </div>
+          
+          {/* Textos */}
           <div className="flex-1">
             <p className="text-sm font-black text-gray-900">{titulo}</p>
             <p className="text-xs text-gray-600 font-medium mt-0.5">{texto}</p>
           </div>
+          
+          {/* Botón Cerrar */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               toast.dismiss(t.id);
             }}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 p-2"
           >
             <X size={18} />
           </button>
         </div>
       </div>
     ), { duration: 5000, position: 'top-right' });
-
-    // Notificación del sistema
-    if (
-      typeof window !== 'undefined' &&
-      'Notification' in window &&
-      document.hidden &&
-      Notification.permission === 'granted'
-    ) {
-      const notification = new Notification(`KARTA: ${titulo}`, {
-        body: texto,
-        icon: '/logo-karta.png',
-        tag: `pedido-${pedido?.id}`,
-        requireInteraction: false,
-      });
-
-      // Vibración móvil
-      if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200]);
-      }
-
-      setTimeout(() => notification.close(), 5000);
-
-      notification.onclick = () => {
-        window.focus();
-        router.push('/admin');
-        notification.close();
-      };
-    }
   };
 
   return null;

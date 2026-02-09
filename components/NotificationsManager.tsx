@@ -1,80 +1,113 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Volume2 } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PedidosListener from './PedidosListener';
 import CuentasListener from './CuentasListener';
 
 export default function NotificationsManager() {
-  const [showPrompt, setShowPrompt] = useState(true);
+  const [status, setStatus] = useState<'LOCKED' | 'UNLOCKED'>('LOCKED');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // 1. INICIALIZACIÓN Y DESBLOQUEO AUTOMÁTICO
   useEffect(() => {
-    // Verificar si ya se activaron los sonidos previamente
-    const pedidosEnabled = localStorage.getItem('pedidosAudioEnabled') === 'true';
-    const cuentasEnabled = localStorage.getItem('cuentasAudioEnabled') === 'true';
+    // Crear el audio una sola vez
+    audioRef.current = new Audio('/sounds/ding.mp3');
 
-    if (pedidosEnabled && cuentasEnabled) {
-      setShowPrompt(false);
+    const intentarDesbloqueo = () => {
+        if (!audioRef.current) return;
+
+        // Intentamos reproducir un sonido mudo o muy bajo
+        // Esto le dice al navegador: "El usuario interactuó, dame permiso de audio"
+        const promesa = audioRef.current.play();
+
+        if (promesa !== undefined) {
+            promesa
+            .then(() => {
+                // ¡ÉXITO! El navegador nos dio permiso
+                audioRef.current?.pause();
+                audioRef.current!.currentTime = 0;
+                setStatus('UNLOCKED');
+                
+                // Ya no necesitamos escuchar clics, limpiamos la memoria
+                document.removeEventListener('click', intentarDesbloqueo);
+                document.removeEventListener('touchstart', intentarDesbloqueo);
+                document.removeEventListener('keydown', intentarDesbloqueo);
+            })
+            .catch((error) => {
+                // Falló (el navegador bloqueó), seguimos en ROJO esperando interacción real
+                console.log("Audio bloqueado esperando interacción...", error);
+            });
+        }
+    };
+
+    // INTENTO 1: Al cargar (si el navegador tiene alto "Media Engagement Index" funcionará solo)
+    const storedPref = localStorage.getItem('audioEnabled');
+    if (storedPref === 'true') {
+        intentarDesbloqueo();
     }
 
-    // Solicitar permisos de notificaciones del sistema
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
+    // INTENTO 2: "Trampa Global"
+    // Escuchamos CUALQUIER clic en toda la ventana para desbloquear
+    document.addEventListener('click', intentarDesbloqueo);
+    document.addEventListener('touchstart', intentarDesbloqueo);
+    document.addEventListener('keydown', intentarDesbloqueo); // También si toca una tecla
+
+    return () => {
+        document.removeEventListener('click', intentarDesbloqueo);
+        document.removeEventListener('touchstart', intentarDesbloqueo);
+        document.removeEventListener('keydown', intentarDesbloqueo);
+    };
   }, []);
 
-  const activarSonidos = () => {
-    // El desbloqueo real se hará con el primer click en los listeners individuales
-    // Esto solo oculta el prompt y muestra el mensaje
-    setShowPrompt(false);
-    toast.success('👆 Haz clic en cualquier parte para activar los sonidos', { 
-      duration: 4000,
-      icon: '🔊' 
-    });
+  // Función manual (por si quieren probar el sonido)
+  const toggleAudio = async () => {
+    if (!audioRef.current) return;
+
+    if (status === 'LOCKED') {
+        try {
+            await audioRef.current.play();
+            setStatus('UNLOCKED');
+            localStorage.setItem('audioEnabled', 'true');
+            toast.success('Sonido ACTIVADO 🔊');
+        } catch (e) {
+            toast.error("El navegador bloqueó el sonido");
+        }
+    } else {
+        // Sonido de prueba
+        const testAudio = new Audio('/sounds/ding.mp3');
+        testAudio.play();
+        toast('Prueba de sonido', { icon: '🔊' });
+    }
   };
 
-  if (showPrompt) {
-    return (
-      <>
-        {/* Prompt de activación */}
-        <div className="fixed bottom-4 right-4 z-[9999] animate-in slide-in-from-bottom-10">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-2xl max-w-sm border border-slate-700">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-gradient-to-br from-green-500 to-green-600 rounded-full animate-pulse shadow-lg">
-                <Volume2 size={24} className="text-white" />
-              </div>
-              <div>
-                <h3 className="font-black text-base">Activar Alertas</h3>
-                <p className="text-xs text-slate-300 font-medium mt-0.5">
-                  Sonidos para pedidos y cuentas
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={activarSonidos}
-              className="w-full bg-white text-slate-900 py-3 rounded-xl text-sm font-black hover:bg-gray-100 transition-all active:scale-95 shadow-md"
-            >
-              🔊 Activar Sonidos
-            </button>
-            <p className="text-[10px] text-slate-400 text-center mt-3">
-              Los navegadores requieren interacción del usuario
-            </p>
-          </div>
-        </div>
-
-        {/* Listeners (ya se montan pero esperan interacción) */}
-        <PedidosListener />
-        <CuentasListener />
-      </>
-    );
-  }
-
-  // Solo los listeners, sin UI
   return (
     <>
+      {/* BOTÓN FLOTANTE (Solo visible si está bloqueado o para probar) */}
+      <div className={`fixed bottom-4 right-4 z-[9999] transition-all duration-500 ${status === 'UNLOCKED' ? 'opacity-50 hover:opacity-100' : 'opacity-100'}`}>
+        
+        {/* Tooltip solo si está bloqueado */}
+        {status === 'LOCKED' && (
+             <div className="absolute bottom-full mb-2 right-0 bg-red-600 text-white text-xs px-3 py-1 rounded-lg font-bold whitespace-nowrap animate-bounce">
+                ¡HAZ CLIC PARA ACTIVAR!
+            </div>
+        )}
+
+        <button
+            onClick={toggleAudio}
+            className={`
+                flex items-center justify-center w-12 h-12 rounded-full shadow-xl border-2 transition-all
+                ${status === 'LOCKED' 
+                    ? 'bg-red-600 border-white animate-pulse' 
+                    : 'bg-green-600 border-green-400'
+                }
+            `}
+        >
+            {status === 'LOCKED' ? <VolumeX size={20} className="text-white" /> : <Volume2 size={20} className="text-white" />}
+        </button>
+      </div>
+
       <PedidosListener />
       <CuentasListener />
     </>
