@@ -2,10 +2,10 @@
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import { useLoader } from "@/context/LoaderContext";
-import { Receipt, X, CheckCircle2 } from "lucide-react"; 
+import { Receipt, X, CheckCircle2, ArrowLeft } from "lucide-react"; 
 import toast from "react-hot-toast";
 
-export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos }: any) {
+export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo }: any) {
   // --- ESTADOS Y LÓGICA ---
   const [carrito, setCarrito] = useState<Record<number, number>>({});
   const [nombre, setNombre] = useState("");
@@ -159,6 +159,14 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
         <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]"> 
           
           <div className="flex items-center gap-2 h-full">
+            {esMozo && (
+              <button 
+                onClick={() => window.location.href = "/mozo"}
+                className="mr-2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            )}
             <div className="relative w-24 h-full min-h-[50px] drop-shadow-md">
               <Image 
                 src="/karta-logo.png" 

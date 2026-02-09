@@ -25,9 +25,10 @@ export default function MesasPage() {
 
   // --- FORMULARIOS ---
   const [modo, setModo] = useState<"manual" | "rapida">("manual");
+  
+  // MODIFICADO: Eliminé qr_token del estado manual
   const [manual, setManual] = useState({
     nombre: "",
-    qr_token: "",
     sector: "",
   });
 
@@ -41,7 +42,7 @@ export default function MesasPage() {
   const [editando, setEditando] = useState<number | null>(null);
   const [formEdit, setFormEdit] = useState({
     nombre: "",
-    qr_token: "",
+    qr_token: "", // En edición sí lo dejamos por si quieres verlo/cambiarlo, pero podrías quitarlo también
     sector: "",
   });
 
@@ -53,7 +54,6 @@ export default function MesasPage() {
         fetch("/api/admin/sectores"),
       ]);
 
-      // 🔴 VALIDACIÓN CRÍTICA: Verificar que la respuesta sea exitosa
       if (!resMesas.ok) {
         toast.error("Error cargando mesas");
         return;
@@ -61,7 +61,6 @@ export default function MesasPage() {
 
       const dataMesas = await resMesas.json();
       
-      // 🔴 VALIDACIÓN CRÍTICA: Asegurar que sea un array
       if (Array.isArray(dataMesas)) {
         setMesas(dataMesas);
         
@@ -86,7 +85,7 @@ export default function MesasPage() {
     } catch (error) {
       console.error("Error en cargar():", error);
       toast.error("Error cargando datos");
-      setMesas([]); // 🔴 Asegurar que siempre sea array
+      setMesas([]); 
     }
   };
 
@@ -119,8 +118,8 @@ export default function MesasPage() {
 
   const crearManual = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manual.nombre || !manual.qr_token)
-      return toast.error("Completá los datos");
+    // MODIFICADO: Ya no validamos qr_token
+    if (!manual.nombre) return toast.error("Ingresá el nombre de la mesa");
 
     const toastId = toast.loading("Creando mesa...");
     const res = await fetch("/api/admin/mesas", {
@@ -130,7 +129,7 @@ export default function MesasPage() {
 
     if (res.ok) {
       toast.success("¡Mesa lista!", { id: toastId });
-      setManual({ ...manual, nombre: "", qr_token: "" });
+      setManual({ ...manual, nombre: "" }); // Limpiamos solo nombre
       cargar();
     } else {
       const d = await res.json();
@@ -177,13 +176,9 @@ export default function MesasPage() {
     cargar();
   };
 
+  // MODIFICADO: Eliminé handleNombreChange complejo porque ya no generamos token manual
   const handleNombreChange = (val: string) => {
-    const token = val
-      .toLowerCase()
-      .trim()
-      .replace(/[\s\W-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    setManual({ ...manual, nombre: val, qr_token: token });
+    setManual({ ...manual, nombre: val });
   };
 
   // --- AGRUPACIÓN ---
@@ -333,6 +328,7 @@ export default function MesasPage() {
                     ))}
                   </select>
                 </div>
+                {/* INPUT NOMBRE (Ahora ocupa más espacio) */}
                 <div className="flex-1 w-full">
                   <label className="block text-xs font-bold text-gray-400 mb-1">
                     Nombre Mesa
@@ -345,17 +341,9 @@ export default function MesasPage() {
                     onChange={(e) => handleNombreChange(e.target.value)}
                   />
                 </div>
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-bold text-gray-400 mb-1">
-                    Token (Auto)
-                  </label>
-                  <input
-                    required
-                    readOnly
-                    className="w-full bg-gray-100 border border-gray-200 p-2.5 rounded-xl text-gray-500 text-xs font-mono outline-none cursor-not-allowed"
-                    value={manual.qr_token}
-                  />
-                </div>
+                
+                {/* ELIMINADO: INPUT TOKEN (AUTO) */}
+
                 <button className="bg-gray-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-black transition-transform active:scale-95 shadow-md">
                   Crear
                 </button>
