@@ -7,13 +7,14 @@ import toast from "react-hot-toast";
 
 export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos }: any) {
   // --- ESTADOS Y LÓGICA ---
-  const [carrito, setCarrito] = useState<any>({});
+  const [carrito, setCarrito] = useState<Record<number, number>>({});
   const [nombre, setNombre] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [verCuenta, setVerCuenta] = useState(false); // Modal de cuenta
   const { showLoader, hideLoader } = useLoader();
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
   const [pidiendoCuenta, setPidiendoCuenta] = useState(false);
+
   // --- LÓGICA DE AGRUPACIÓN DE CUENTA ("Mi Cuenta") ---
   const { itemsHistoricos, totalHistorico } = useMemo(() => {
     const mapa = new Map();
@@ -50,7 +51,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
     };
   }, [pedidosHistoricos]);
 
-
+  // --- SOLICITAR CUENTA ---
   const pedirCuenta = async () => {
     setPidiendoCuenta(true);
     try {
@@ -71,7 +72,8 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
     } finally {
         setPidiendoCuenta(false);
     }
-};
+  };
+
   // --- FUNCIÓN DE SCROLL ---
   const scrollearACategoria = (catId: number) => {
     setCategoriaActiva(catId);
@@ -162,6 +164,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
                 src="/karta-logo.png" 
                 alt="Logo" 
                 fill
+                sizes="(max-width: 768px) 100px, 150px"
                 className="object-contain object-left" 
                 priority
               />
@@ -236,7 +239,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
                           alt={prod.nombre} 
                           fill 
                           className="object-cover" 
-                          sizes="100px"
+                          sizes="(max-width: 768px) 100px, 150px"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-300">
@@ -345,32 +348,38 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
                 {/* Lista */}
                 <div className="p-5 max-h-[50vh] overflow-y-auto">
-                    <div className="space-y-4">
-                        {itemsHistoricos.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-start border-b border-dashed border-gray-200 pb-3 last:border-0 last:pb-0">
-                                <div className="flex gap-3">
-                                    <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs">
-                                        {item.cantidad}
-                                    </span>
-                                    <div>
-                                        <p className="font-bold text-gray-800 text-sm leading-tight">{item.nombre}</p>
-                                        <div className="flex items-center gap-1 mt-1">
-                                            <CheckCircle2 size={10} className="text-green-500" />
-                                            <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide">En marcha</span>
+                    {itemsHistoricos.length === 0 ? (
+                         <div className="text-center py-10 text-gray-400">
+                            <p>Aún no has pedido nada.</p>
+                         </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {itemsHistoricos.map((item: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-start border-b border-dashed border-gray-200 pb-3 last:border-0 last:pb-0">
+                                    <div className="flex gap-3">
+                                        <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs">
+                                            {item.cantidad}
+                                        </span>
+                                        <div>
+                                            <p className="font-bold text-gray-800 text-sm leading-tight">{item.nombre}</p>
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <CheckCircle2 size={10} className="text-green-500" />
+                                                <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide">En marcha</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    <div className="text-right">
+                                        <span className="block font-bold text-gray-900 text-sm">
+                                            ${item.subtotal}
+                                        </span>
+                                        <span className="text-[10px] text-gray-400">
+                                            (${item.precio} c/u)
+                                        </span>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="block font-bold text-gray-900 text-sm">
-                                        ${item.subtotal}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400">
-                                        (${item.precio} c/u)
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Total */}
@@ -384,24 +393,34 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
                             Este total <b>NO incluye</b> lo que estás seleccionando ahora en el carrito.
                         </p>
                     </div>
-                    <button 
-                        onClick={() => setVerCuenta(false)}
-                        className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl active:scale-95 transition-transform shadow-lg shadow-slate-200 hover:bg-black"
-                    >
-                        Seguir Pidiendo
-                    </button>
-                    <button 
-            onClick={pedirCuenta}
-            disabled={pidiendoCuenta}
-            className="w-full bg-white text-green-600 border-2 border-green-500 font-bold py-3.5 rounded-xl active:scale-95 transition-transform hover:bg-green-50 flex items-center justify-center gap-2"
-        >
-            {pidiendoCuenta ? "Solicitando..." : (
-                <>
-                    <Receipt size={20} />
-                    PEDIR LA CUENTA
-                </>
-            )}
-        </button>
+                    
+                    {/* Botones de acción organizados */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <button 
+                            onClick={() => setVerCuenta(false)}
+                            className="bg-slate-200 text-slate-800 font-bold py-3.5 rounded-xl active:scale-95 transition-transform hover:bg-slate-300"
+                        >
+                            Seguir Pidiendo
+                        </button>
+                        
+                        <button 
+                            onClick={pedirCuenta}
+                            disabled={pidiendoCuenta}
+                            className={`
+                                font-bold py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2
+                                ${pidiendoCuenta 
+                                    ? "bg-gray-100 text-gray-400 cursor-not-allowed" 
+                                    : "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"}
+                            `}
+                        >
+                            {pidiendoCuenta ? "..." : (
+                                <>
+                                    <Receipt size={18} />
+                                    PEDIR CUENTA
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
             </div>

@@ -26,18 +26,25 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
           const nuevoEstado = payload.new.estado;
           const viejoEstado = payload.old.estado;
 
+          // Solo actuamos si el estado cambió realmente
           if (nuevoEstado !== viejoEstado) {
             
             // 1. Caso CANCELADO 🚫
             if (nuevoEstado === 'CANCELADO') {
-              if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]); // Vibración de error
+              // Vibración de error (si el dispositivo lo soporta)
+              if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                 navigator.vibrate([100, 50, 100, 50, 100]);
+              }
               mostrarAlertaCancelacion();
               router.refresh(); 
             }
 
             // 2. Caso LISTO/ENTREGADO ✅
             if (nuevoEstado === 'ENTREGADO') {
-              if (navigator.vibrate) navigator.vibrate([200, 100, 200]); // Vibración de éxito "Ta-da!"
+              // Vibración de éxito "Ta-da!"
+              if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                 navigator.vibrate([200, 100, 200]);
+              }
               mostrarAlertaExito();
             }
           }
@@ -50,7 +57,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
     };
   }, [sesionId, router]);
 
-  // --- UI: ALERTA DE CANCELACIÓN (Mejorada visualmente) ---
+  // --- UI: ALERTA DE CANCELACIÓN (Estilo Rojo/Alerta) ---
   const mostrarAlertaCancelacion = () => {
     toast.custom((t) => (
       <div className={`${t.visible ? 'animate-in fade-in slide-in-from-top-5' : 'animate-out fade-out slide-out-to-top-5'} 
@@ -89,7 +96,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
     ), { duration: 8000, position: 'top-center' });
   };
 
-  // --- UI: ALERTA DE ÉXITO (Premium Style) ---
+  // --- UI: ALERTA DE ÉXITO (Estilo Premium Verde) ---
   const mostrarAlertaExito = () => {
     toast.custom((t) => (
       <div
@@ -125,12 +132,12 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
             </p>
         </div>
 
-        {/* Barra de progreso visual (opcional, le da toque pro) */}
+        {/* Barra de progreso visual */}
         <div className="h-1 w-full bg-emerald-100">
             <div className="h-full bg-emerald-500 animate-[progress_5s_linear_forwards]" style={{width: '100%'}}></div>
         </div>
       </div>
-    ), { duration: 5000, position: 'bottom-center' }); // Posición abajo para fácil alcance (thumb zone)
+    ), { duration: 5000, position: 'bottom-center' }); // Posición "Thumb Zone" (zona del pulgar)
   };
 
   return null;

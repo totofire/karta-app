@@ -4,6 +4,9 @@ import MenuInterface from "@/app/mesa/[token]/MenuInterface";
 import ClienteListener from "@/components/ClienteListener";
 import { Store, ScanLine } from "lucide-react"; 
 
+// 👇 1. IMPORTA EL PROVIDER
+import { LoaderProvider } from "@/context/LoaderContext"; 
+
 // Forzamos dinamismo para evitar caché y tener datos frescos siempre
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +69,7 @@ export default async function PedidoPage({
       <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
         <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-sm text-center border border-slate-800 flex flex-col items-center relative overflow-hidden">
           
-          {/* Decoración de fondo (Gradiente con tus colores y opacidad solicitada) */}
+          {/* Decoración de fondo */}
           <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-[#A62E2E] to-[#8C2626]"></div>
           
           <div className="w-24 h-24 bg-[#A62E2E]/10 rounded-full flex items-center justify-center mb-6 shadow-inner border border-[#A62E2E]/20">
@@ -98,8 +101,9 @@ export default async function PedidoPage({
   });
 
   // 4. Renderizar: Listener + Interfaz
+  // 👇 2. ENVUELVE TODO DENTRO DEL PROVIDER
   return (
-    <>
+    <LoaderProvider>
       <ClienteListener sesionId={sesion.id} />
 
       <MenuInterface 
@@ -108,6 +112,6 @@ export default async function PedidoPage({
         tokenEfimero={tokenEfimero}
         pedidosHistoricos={sesion.pedidos} 
       />
-    </>
+    </LoaderProvider>
   );
 }

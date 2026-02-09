@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-export async function GET() {
-  // Eliminamos la cookie de sesión
+export async function GET(request: Request) {
   const cookieStore = await cookies();
-  cookieStore.delete("admin_session");
+  
+  // CORRECCIÓN: Borrar "token", que es como la llamaste en el login
+  cookieStore.delete("token");
 
-  // Redirigimos al login
-  return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_URL || "http://localhost:3000"));
+  // Opcional: Para asegurar que se borre, a veces ayuda setearla como expirada
+  // cookieStore.set("token", "", { maxAge: 0 }); 
+
+  // Redirigimos al login usando la URL base de la petición actual (más seguro que process.env)
+  return NextResponse.redirect(new URL("/login", request.url));
 }
