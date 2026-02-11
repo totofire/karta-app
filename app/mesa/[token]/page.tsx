@@ -4,60 +4,69 @@ import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import MenuInterface from "./MenuInterface";
+import ClienteListener from "@/components/ClienteListener";
+import { Store, ScanLine } from "lucide-react"; 
+// 👇 1. IMPORTANTE: Importar el Provider para que funcione useLoader
+import { LoaderProvider } from "@/context/LoaderContext"; 
 
-// Forzamos dinamismo para evitar caché en validaciones de sesión
+// Forzamos dinamismo para evitar caché y tener datos frescos siempre
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
-  // En Next.js 15+, params es una promesa
   const { token } = await params;
   const cookieStore = await cookies();
   const userToken = cookieStore.get("token")?.value;
   
-  // =================================================================================
-  // VERIFICACIÓN DE ROL: ¿Es un Mozo/Admin logueado?
-  // =================================================================================
+  // --- VERIFICACIÓN DE ROL (Mozo) ---
   let esMozo = false;
-  
   if (userToken) {
     try {
       const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
       const { payload } = await jwtVerify(userToken, secret);
       esMozo = payload.rol === "MOZO" || payload.rol === "ADMIN";
     } catch (e) {
-      console.log("⚠️ Token inválido o expirado");
       esMozo = false;
     }
   }
 
-  // =================================================================================
-  // ESTRATEGIA 1: EL TOKEN ES UNA SESIÓN ACTIVA (Hash largo)
-  // Caso: El Mozo hace clic en el dashboard o el Cliente refresca la página.
-  // =================================================================================
-  
+  // --- BUSCAR SESIÓN POR TOKEN EFÍMERO ---
   const sesionActiva = await prisma.sesion.findUnique({
-    where: { 
-      tokenEfimero: token,
-    },
-    include: {
+    where: { tokenEfimero: token },
+    include: { 
       mesa: true,
-      local: true
+      local: true 
     }
   });
 
-  // Validamos: Existe sesión + No tiene fecha de fin (está abierta) + No expiró
+  // Validamos: Existe sesión + NO tiene fecha de fin (está abierta).
   const sesionValida = sesionActiva && !sesionActiva.fechaFin; 
-  // (Opcional: && sesionActiva.expiraEn > new Date())
 
+  // CASO: SESIÓN EXISTE PERO ESTÁ CERRADA (Ya pagaron)
+  if (sesionActiva && sesionActiva.fechaFin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
+        <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-sm text-center border border-slate-800 flex flex-col items-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-[#A62E2E] to-[#8C2626]"></div>
+          <div className="w-24 h-24 bg-[#A62E2E]/10 rounded-full flex items-center justify-center mb-6 shadow-inner border border-[#A62E2E]/20">
+            <Store size={48} className="text-[#A62E2E]" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">¡Muchas Gracias!</h2>
+          <p className="text-slate-500 font-medium leading-relaxed mb-6">
+            Tu cuenta ya fue cobrada. <br/>Esperamos que hayas disfrutado tu visita.
+          </p>
+          <div className="text-xs text-[#A62E2E] font-black uppercase tracking-widest border-t border-gray-100 pt-4 w-full">
+            KARTA APP
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // CASO: SESIÓN ACTIVA Y ABIERTA -> MOSTRAR MENÚ
   if (sesionValida) {
-    // ✅ ÉXITO: CARGAMOS EL MENÚ (Server Side Rendering)
-    console.log(`✅ Ingreso a Sesión Activa: ${sesionActiva.id} (Mesa: ${sesionActiva.mesa.nombre})`);
-
-    // 1. Cargar el Menú del Local
+    // 1. Cargar Categorías del Local
     const categorias = await prisma.categoria.findMany({
-      where: { 
-        localId: sesionActiva.localId,
-      },
+      where: { localId: sesionActiva.localId },
       include: { 
         productos: { 
             where: { activo: true },
@@ -67,74 +76,59 @@ export default async function Page({ params }: { params: Promise<{ token: string
       orderBy: { orden: 'asc' }
     });
 
-    // 2. Cargar el Historial de Pedidos de ESTA sesión
+    // 2. Cargar Historial
     const pedidos = await prisma.pedido.findMany({
         where: { sesionId: sesionActiva.id },
         include: { items: { include: { producto: true } } },
         orderBy: { fecha: 'desc' }
     });
 
-    // 3. Renderizar la Interfaz
+    // 👇 2. AQUÍ ESTÁ LA SOLUCIÓN:
+    // Tienes que envolver TODO lo que use useLoader() dentro de <LoaderProvider>
     return (
-      <MenuInterface 
-         mesa={sesionActiva.mesa} 
-         categorias={categorias} 
-         tokenEfimero={sesionActiva.tokenEfimero}
-         pedidosHistoricos={pedidos}
-         esMozo={esMozo} // 🔥 PASAMOS LA PROP
-      />
+      <LoaderProvider>
+          <ClienteListener sesionId={sesionActiva.id} />
+          <MenuInterface 
+             mesa={sesionActiva.mesa} 
+             categorias={categorias} 
+             tokenEfimero={sesionActiva.tokenEfimero}
+             pedidosHistoricos={pedidos}
+             esMozo={esMozo}
+          />
+      </LoaderProvider>
     );
   }
 
-  // =================================================================================
-  // ESTRATEGIA 2: EL TOKEN ES UN QR FÍSICO DE MESA (Hash corto/fijo)
-  // Caso: El Cliente acaba de escanear el sticker en la mesa.
-  // =================================================================================
-
+  // --- SI NO ES SESIÓN, BUSCAMOS SI ES UN QR DE MESA FÍSICO ---
   const mesa = await prisma.mesa.findUnique({
     where: { qr_token: token },
   });
 
-  // ❌ ERROR: El código no es ni sesión ni mesa válida
+  // CASO: CÓDIGO INVÁLIDO (Ni sesión activa, ni mesa válida)
   if (!mesa) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full border border-gray-100">
-            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-            </div>
-            <h1 className="text-xl font-black text-gray-900 mb-2">Código Inválido</h1>
-            <p className="text-gray-500 text-sm leading-relaxed">
-              No pudimos identificar este código. <br/>
-              Si escaneaste un QR, avisá al mozo.
-            </p>
+      <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB] p-6">
+        <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm text-center border border-gray-200 flex flex-col items-center">
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6">
+            <ScanLine size={40} className="text-red-600" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Código Inválido</h2>
+          <p className="text-gray-500 font-medium">El código escaneado no existe o ha caducado.</p>
         </div>
       </div>
     );
   }
 
-  // ✅ ES UNA MESA VÁLIDA: Gestión de Sesión
-  
-  // 1. Buscamos si YA tiene una sesión abierta para reutilizarla
+  // Si es mesa válida, buscamos o creamos sesión
   let sesionMesa = await prisma.sesion.findFirst({
-    where: {
-      mesaId: mesa.id,
-      fechaFin: null, // Solo abiertas
-    },
+    where: { mesaId: mesa.id, fechaFin: null },
     orderBy: { fechaInicio: 'desc' }
   });
 
-  // 2. Si no hay sesión, CREAMOS UNA NUEVA
   if (!sesionMesa) {
-    console.log(`🆕 Creando nueva sesión para Mesa: ${mesa.nombre}`);
-    
-    const tokenNuevo = crypto.randomBytes(32).toString("hex"); // Token largo seguro
-    
-    // Opcional: Tiempo de expiración (ej: 4 horas)
+    const tokenNuevo = crypto.randomBytes(32).toString("hex");
     const expiraEn = new Date(Date.now() + 4 * 60 * 60 * 1000); 
-
+    
     sesionMesa = await prisma.sesion.create({
       data: {
         mesaId: mesa.id,
@@ -142,14 +136,11 @@ export default async function Page({ params }: { params: Promise<{ token: string
         tokenEfimero: tokenNuevo,
         fechaInicio: new Date(),
         expiraEn: expiraEn,
-        nombreHost: "Cliente QR" // Auditoría
+        nombreHost: "Cliente QR"
       },
     });
-  } else {
-    console.log(`🔄 Reutilizando sesión existente para Mesa: ${mesa.nombre}`);
   }
 
-  // 3. REDIRECCIÓN FINAL
-  // Redirigimos al usuario a la misma página, pero ahora con el TOKEN DE SESIÓN (Estrategia 1)
+  // Redirigimos a la sesión activa
   redirect(`/mesa/${sesionMesa.tokenEfimero}`);
 }

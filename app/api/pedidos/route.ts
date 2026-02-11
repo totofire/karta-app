@@ -66,12 +66,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Productos no válidos para este local" }, { status: 400 });
     }
 
+    // 🔥 ASIGNACIÓN AUTOMÁTICA DE NOMBRE SI ES NULL
+    // Si no viene nombre, usamos el nombre de la mesa (Ej: "Mesa 4")
+    const nombreFinal = nombreCliente && nombreCliente.trim() !== "" 
+        ? nombreCliente 
+        : `Mesa ${sesion.mesa.nombre}`;
+
     // 6. GUARDAR PEDIDO (Inyectando localId)
     const nuevoPedido = await prisma.pedido.create({
       data: {
         sesionId: sesion.id,
         localId: localIdDelBar, // <--- IMPORTANTÍSIMO para que la cocina lo vea
-        nombreCliente: nombreCliente || "Anónimo",
+        nombreCliente: nombreFinal, 
         estado: "PENDIENTE",
         items: {
           create: itemsParaGuardar

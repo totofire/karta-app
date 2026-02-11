@@ -82,7 +82,6 @@ export default function CocinaPage() {
                 <body>
                     <div class="header">
                         <div class="title">MESA ${p.sesion.mesa.nombre}</div>
-                        <div class="meta">Mozo/Cliente: ${p.nombreCliente || 'Anónimo'}</div>
                         <div class="meta">Hora: ${new Date(p.fecha).toLocaleTimeString()}</div>
                     </div>
                     ${p.items.map((item: any) => `
@@ -105,7 +104,7 @@ export default function CocinaPage() {
     }
 
     if (!p.impreso) {
-        await fetch(`/api/admin/pedidos/${p.id}`, { // Corregido endpoint
+        await fetch(`/api/admin/pedidos/${p.id}`, { 
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ impreso: true }),
@@ -213,9 +212,7 @@ export default function CocinaPage() {
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
                     Mesa {p.sesion.mesa.nombre}
                   </h3>
-                  <p className="text-slate-500 text-xs font-bold uppercase truncate max-w-[120px]">
-                    {p.nombreCliente || "Cliente"}
-                  </p>
+                  {/* ❌ ELIMINADO EL NOMBRE DEL CLIENTE DE AQUÍ */}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                    <TiempoTranscurrido fecha={p.fecha} />

@@ -75,8 +75,7 @@ export default function BarraPage() {
                 <body>
                     <div class="header">
                         <div class="title">🍸 BARRA: MESA ${p.sesion.mesa.nombre}</div>
-                        <div>${p.nombreCliente || 'Cliente'}</div>
-                    </div>
+                        </div>
                     ${p.items.map((item: any) => `
                         <div class="item">
                             <span>${item.cantidad}x</span>
@@ -184,9 +183,7 @@ export default function BarraPage() {
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
                     Mesa {p.sesion.mesa.nombre}
                   </h3>
-                  <p className="text-slate-500 text-xs font-bold uppercase truncate max-w-[120px]">
-                    {p.nombreCliente || "Cliente"}
-                  </p>
+                  {/* ❌ ELIMINADO EL NOMBRE DEL CLIENTE DE AQUÍ */}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                    <TiempoTranscurrido fecha={p.fecha} />

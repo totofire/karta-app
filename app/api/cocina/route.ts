@@ -16,7 +16,7 @@ export async function GET() {
       },
       select: {
         id: true,
-        nombreCliente: true,
+        // ❌ ELIMINADO: nombreCliente: true,
         fecha: true,
         impreso: true,
         items: {
@@ -39,7 +39,9 @@ export async function GET() {
       orderBy: { fecha: "asc" },
     });
 
+    // Filtramos para enviar solo pedidos que tengan items de cocina
     const pedidosCocina = pedidos.filter((p) => p.items.length > 0);
+    
     return NextResponse.json(pedidosCocina);
   } catch (error) {
     return NextResponse.json({ error: "Error obteniendo comandas" }, { status: 500 });

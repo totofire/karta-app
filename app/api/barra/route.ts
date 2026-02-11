@@ -16,13 +16,13 @@ export async function GET() {
       },
       select: {
         id: true,
-        nombreCliente: true,
+        // ❌ ELIMINADO: nombreCliente: true,
         fecha: true,
         impreso: true,
         items: {
           where: {
             estado: "PENDIENTE",
-            producto: { categoria: { imprimirCocina: false } },
+            producto: { categoria: { imprimirCocina: false } }, // Solo items de BARRA
           },
           select: {
             cantidad: true,
@@ -39,7 +39,9 @@ export async function GET() {
       orderBy: { fecha: "asc" },
     });
 
+    // Filtramos para enviar solo pedidos que tengan items de barra
     const pedidosBarra = pedidos.filter((p) => p.items.length > 0);
+    
     return NextResponse.json(pedidosBarra);
   } catch (error) {
     return NextResponse.json({ error: "Error obteniendo bebidas" }, { status: 500 });
