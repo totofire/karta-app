@@ -1,11 +1,11 @@
 "use client";
 import { useState, useMemo } from "react";
 import Image from "next/image";
-import { useLoader } from "@/context/LoaderContext"; // ✅ Usar el provider que ya tienes
-import { Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus, ShoppingCart } from "lucide-react"; 
+import { Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus, ShoppingCart, Clock, Flame, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
-// 🔥 NUEVA INTERFAZ: Cada item del carrito es único
+
+
 interface ItemCarrito {
   id: string; // UUID único para diferenciar items
   productoId: number;
@@ -22,7 +22,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [enviando, setEnviando] = useState(false);
   const [verCuenta, setVerCuenta] = useState(false);
   const [verCarrito, setVerCarrito] = useState(false);
-  const { showLoader, hideLoader } = useLoader(); // ✅ Hook del contexto global
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
   const [pidiendoCuenta, setPidiendoCuenta] = useState(false);
 
@@ -161,7 +160,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
   // --- ENVIAR PEDIDO ---
   const confirmarPedido = async () => {
-    showLoader(); // ✅ Loader global
     setEnviando(true);
 
     // Transformar carrito al formato que espera el backend
@@ -193,8 +191,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
     } catch (error) {
       toast.error("Error de conexión");
       setEnviando(false);
-    } finally {
-      hideLoader(); // ✅ Ocultar loader global
     }
   };
 
@@ -333,40 +329,53 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
       </main>
 
       {/* --- FOOTER FLOTANTE (CARRITO) --- */}
-      {totalItems > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
-          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
-            <div className="flex justify-between items-center mb-3">
-              <button
-                onClick={() => setVerCarrito(true)}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                <ShoppingCart size={20} />
-                <div>
-                  <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold block">Carrito</span>
-                  <span className="text-sm font-medium">{totalItems} {totalItems === 1 ? 'ítem' : 'ítems'}</span>
-                </div>
-              </button>
-              <span className="text-3xl font-black bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent">
-                ${precioTotal}
-              </span>
-            </div>
-            
-            <button 
-              onClick={confirmarPedido}
-              disabled={enviando}
-              className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
-            >
-              {enviando ? "ENVIANDO..." : (
-                <>
-                  CONFIRMAR PEDIDO
-                  <CheckCircle2 size={20} />
-                </>
-              )}
-            </button>
+{totalItems > 0 && (
+  <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
+    <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
+      <div className="flex justify-between items-center mb-3">
+        <button
+          onClick={() => setVerCarrito(true)}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
+        >
+          <ShoppingCart size={20} />
+          <div>
+            <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold block">Carrito</span>
+            <span className="text-sm font-medium">{totalItems} {totalItems === 1 ? 'ítem' : 'ítems'}</span>
           </div>
-        </div>
-      )}
+        </button>
+        <span className="text-3xl font-black bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent">
+          ${precioTotal}
+        </span>
+      </div>
+      
+      <button 
+        onClick={confirmarPedido}
+        disabled={enviando}
+        className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
+      >
+        {enviando ? (
+          <>
+            <Loader2 size={20} className="animate-spin" />
+            ENVIANDO...
+          </>
+        ) : (
+          <>
+            <Flame size={20} />
+            ENVIAR A COCINA
+          </>
+        )}
+      </button>
+
+      {/* Aviso de pedido pendiente */}
+      <div className="flex items-center justify-center gap-1.5 mt-2">
+        <Clock size={12} className="text-amber-500" />
+        <p className="text-center text-xs text-amber-500 font-bold uppercase tracking-wide">
+          Tu pedido aún no fue enviado
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* 🆕 MODAL DE PRODUCTO */}
       {modalProducto && (

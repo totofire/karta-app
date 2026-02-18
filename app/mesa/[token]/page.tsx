@@ -6,10 +6,7 @@ import crypto from "crypto";
 import MenuInterface from "./MenuInterface";
 import ClienteListener from "@/components/ClienteListener";
 import { Store, ScanLine } from "lucide-react"; 
-// 👇 1. IMPORTANTE: Importar el Provider para que funcione useLoader
-import { LoaderProvider } from "@/context/LoaderContext"; 
 
-// Forzamos dinamismo para evitar caché y tener datos frescos siempre
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
@@ -17,7 +14,6 @@ export default async function Page({ params }: { params: Promise<{ token: string
   const cookieStore = await cookies();
   const userToken = cookieStore.get("token")?.value;
   
-  // --- VERIFICACIÓN DE ROL (Mozo) ---
   let esMozo = false;
   if (userToken) {
     try {
@@ -29,7 +25,6 @@ export default async function Page({ params }: { params: Promise<{ token: string
     }
   }
 
-  // --- BUSCAR SESIÓN POR TOKEN EFÍMERO ---
   const sesionActiva = await prisma.sesion.findUnique({
     where: { tokenEfimero: token },
     include: { 
@@ -38,10 +33,8 @@ export default async function Page({ params }: { params: Promise<{ token: string
     }
   });
 
-  // Validamos: Existe sesión + NO tiene fecha de fin (está abierta).
   const sesionValida = sesionActiva && !sesionActiva.fechaFin; 
 
-  // CASO: SESIÓN EXISTE PERO ESTÁ CERRADA (Ya pagaron)
   if (sesionActiva && sesionActiva.fechaFin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
@@ -62,49 +55,42 @@ export default async function Page({ params }: { params: Promise<{ token: string
     );
   }
 
-  // CASO: SESIÓN ACTIVA Y ABIERTA -> MOSTRAR MENÚ
   if (sesionValida) {
-    // 1. Cargar Categorías del Local
     const categorias = await prisma.categoria.findMany({
       where: { localId: sesionActiva.localId },
       include: { 
         productos: { 
-            where: { activo: true },
-            orderBy: { orden: 'asc' }
+          where: { activo: true },
+          orderBy: { orden: 'asc' }
         } 
       },
       orderBy: { orden: 'asc' }
     });
 
-    // 2. Cargar Historial
     const pedidos = await prisma.pedido.findMany({
-        where: { sesionId: sesionActiva.id },
-        include: { items: { include: { producto: true } } },
-        orderBy: { fecha: 'desc' }
+      where: { sesionId: sesionActiva.id },
+      include: { items: { include: { producto: true } } },
+      orderBy: { fecha: 'desc' }
     });
 
-    // 👇 2. AQUÍ ESTÁ LA SOLUCIÓN:
-    // Tienes que envolver TODO lo que use useLoader() dentro de <LoaderProvider>
     return (
-      <LoaderProvider>
-          <ClienteListener sesionId={sesionActiva.id} />
-          <MenuInterface 
-             mesa={sesionActiva.mesa} 
-             categorias={categorias} 
-             tokenEfimero={sesionActiva.tokenEfimero}
-             pedidosHistoricos={pedidos}
-             esMozo={esMozo}
-          />
-      </LoaderProvider>
+      <>
+        <ClienteListener sesionId={sesionActiva.id} />
+        <MenuInterface 
+          mesa={sesionActiva.mesa} 
+          categorias={categorias} 
+          tokenEfimero={sesionActiva.tokenEfimero}
+          pedidosHistoricos={pedidos}
+          esMozo={esMozo}
+        />
+      </>
     );
   }
 
-  // --- SI NO ES SESIÓN, BUSCAMOS SI ES UN QR DE MESA FÍSICO ---
   const mesa = await prisma.mesa.findUnique({
     where: { qr_token: token },
   });
 
-  // CASO: CÓDIGO INVÁLIDO (Ni sesión activa, ni mesa válida)
   if (!mesa) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB] p-6">
@@ -119,7 +105,6 @@ export default async function Page({ params }: { params: Promise<{ token: string
     );
   }
 
-  // Si es mesa válida, buscamos o creamos sesión
   let sesionMesa = await prisma.sesion.findFirst({
     where: { mesaId: mesa.id, fechaFin: null },
     orderBy: { fechaInicio: 'desc' }
@@ -141,6 +126,5 @@ export default async function Page({ params }: { params: Promise<{ token: string
     });
   }
 
-  // Redirigimos a la sesión activa
   redirect(`/mesa/${sesionMesa.tokenEfimero}`);
 }

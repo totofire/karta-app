@@ -1,17 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 import useSWR from "swr";
 import toast from "react-hot-toast";
-import { 
-  CheckCircle2, 
-  ChefHat, 
-  Clock, 
-  Printer, 
-  AlertCircle,
-  XCircle
-} from "lucide-react";
+import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle } from "lucide-react";
 
-// --- COMPONENTES AUXILIARES ---
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const Reloj = ({ fecha }: { fecha: string }) => {
   const [hora, setHora] = useState<string>("");
@@ -42,81 +39,88 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
   );
 };
 
-// Fetcher seguro que devuelve array vacío si hay error
 const fetcher = (url: string) => fetch(url).then(async (res) => {
-    if (!res.ok) return [];
-    return res.json();
+  if (!res.ok) return [];
+  return res.json();
 });
 
-// --- PÁGINA PRINCIPAL ---
-
 export default function CocinaPage() {
+  // 🔥 Sin refreshInterval — Supabase lo reemplaza
   const { data: pedidosRaw = [], mutate } = useSWR("/api/cocina", fetcher, {
-    refreshInterval: 5000,
     revalidateOnFocus: true,
     fallbackData: []
   });
 
-  // Aseguramos que pedidos sea un array
   const pedidos = Array.isArray(pedidosRaw) ? pedidosRaw : [];
 
-  // Función de impresión térmica
+  // 🔥 Supabase Realtime — escucha cambios en Pedido
+  useEffect(() => {
+    const canal = supabase
+      .channel("cambios-pedidos-cocina")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Pedido" },
+        () => mutate() // revalida SWR cuando hay cambio
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [mutate]);
+
   const imprimirComanda = async (p: any) => {
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
     if (ventana) {
-        ventana.document.write(`
-            <html>
-                <head>
-                    <title>Comanda ${p.sesion.mesa.nombre}</title>
-                    <style>
-                        body { font-family: 'Courier New', monospace; padding: 10px; width: 300px; margin: 0 auto; }
-                        .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-                        .title { font-size: 20px; font-weight: bold; }
-                        .meta { font-size: 12px; margin-top: 5px; }
-                        .item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
-                        .qty { margin-right: 10px; }
-                        .note { font-size: 12px; font-style: italic; margin-left: 25px; margin-bottom: 5px; }
-                        .footer { border-top: 2px dashed #000; padding-top: 10px; text-align: center; font-size: 12px; margin-top: 20px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <div class="title">MESA ${p.sesion.mesa.nombre}</div>
-                        <div class="meta">Hora: ${new Date(p.fecha).toLocaleTimeString()}</div>
-                    </div>
-                    ${p.items.map((item: any) => `
-                        <div class="item">
-                            <span class="qty">${item.cantidad}x</span>
-                            <span>${item.producto.nombre}</span>
-                        </div>
-                        ${item.observaciones ? `<div class="note">( ${item.observaciones} )</div>` : ''}
-                    `).join('')}
-                    <div class="footer">
-                        KARTA - CONTROL COCINA
-                    </div>
-                </body>
-            </html>
-        `);
-        ventana.document.close();
-        ventana.focus();
-        ventana.print();
-        ventana.close();
+      ventana.document.write(`
+        <html>
+          <head>
+            <title>Comanda ${p.sesion.mesa.nombre}</title>
+            <style>
+              body { font-family: 'Courier New', monospace; padding: 10px; width: 300px; margin: 0 auto; }
+              .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+              .title { font-size: 20px; font-weight: bold; }
+              .meta { font-size: 12px; margin-top: 5px; }
+              .item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
+              .qty { margin-right: 10px; }
+              .note { font-size: 12px; font-style: italic; margin-left: 25px; margin-bottom: 5px; }
+              .footer { border-top: 2px dashed #000; padding-top: 10px; text-align: center; font-size: 12px; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="title">MESA ${p.sesion.mesa.nombre}</div>
+              <div class="meta">Hora: ${new Date(p.fecha).toLocaleTimeString()}</div>
+            </div>
+            ${p.items.map((item: any) => `
+              <div class="item">
+                <span class="qty">${item.cantidad}x</span>
+                <span>${item.producto.nombre}</span>
+              </div>
+              ${item.observaciones ? `<div class="note">( ${item.observaciones} )</div>` : ''}
+            `).join('')}
+            <div class="footer">KARTA - CONTROL COCINA</div>
+          </body>
+        </html>
+      `);
+      ventana.document.close();
+      ventana.focus();
+      ventana.print();
+      ventana.close();
     }
 
     if (!p.impreso) {
-        await fetch(`/api/admin/pedidos/${p.id}`, { 
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ impreso: true }),
-        });
-        mutate();
-        toast.success("Marcado como impreso");
+      await fetch(`/api/admin/pedidos/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ impreso: true }),
+      });
+      mutate();
+      toast.success("Marcado como impreso");
     }
   };
 
-  // --- LÓGICA DE DESPACHO ---
   const despacharCocina = async (pedidoId: number) => {
-    // UI Optimista
     const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
     mutate(pedidosRestantes, false);
 
@@ -137,30 +141,30 @@ export default function CocinaPage() {
     );
   };
 
-  // --- LÓGICA DE CANCELACIÓN ---
   const cancelarPedido = async (pedidoId: number) => {
-    if (!confirm("¿Estás seguro de cancelar este pedido? Se eliminará de la lista.")) return;
+    if (!confirm("¿Estás seguro de cancelar este pedido?")) return;
 
-    // UI Optimista
     const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
     mutate(pedidosRestantes, false);
 
     toast.promise(
-        fetch('/api/admin/cancelar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pedidoId })
-        }).then(async (res) => {
-            if (!res.ok) throw new Error("Error al cancelar");
-            await mutate();
-        }),
-        {
-            loading: 'Cancelando pedido...',
-            success: 'Pedido cancelado 🗑️',
-            error: 'No se pudo cancelar',
-        }
+      fetch('/api/admin/cancelar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId })
+      }).then(async (res) => {
+        if (!res.ok) throw new Error("Error al cancelar");
+        await mutate();
+      }),
+      {
+        loading: 'Cancelando pedido...',
+        success: 'Pedido cancelado 🗑️',
+        error: 'No se pudo cancelar',
+      }
     );
   };
+
+  
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6 w-full max-w-[100vw] overflow-x-hidden">

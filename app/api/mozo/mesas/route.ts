@@ -1,39 +1,53 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth"; // Asumo que tienes tu lógica de auth aquí
+import { getLocalId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const localId = await getLocalId(); // Obtener ID del local del usuario logueado
-  
+  const localId = await getLocalId();
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {
     const mesas = await prisma.mesa.findMany({
-      where: { 
-        localId: localId,
-        activo: true 
-      },
+      where: { localId, activo: true },
       include: {
-        // Incluimos sesiones ABIERTAS para saber si está ocupada
         sesiones: {
-          where: { fechaFin: null }
+          where: { fechaFin: null },
+          include: {
+            pedidos: {
+              where: { estado: { not: "CANCELADO" } },
+              include: { items: true }
+            }
+          }
         }
       },
-      orderBy: { nombre: 'asc' } // O por 'orden' si tienes ese campo
+      orderBy: { nombre: 'asc' }
     });
 
-    // Transformamos los datos para el frontend
-    const mesasConEstado = mesas.map(m => ({
-      id: m.id,
-      nombre: m.nombre,
-      sector: m.sector,
-      ocupada: m.sesiones.length > 0 // Si tiene sesiones abiertas, está ocupada
-    }));
+    const mesasConEstado = mesas.map(m => {
+      const sesion = m.sesiones[0];
+      
+      let totalActual = 0;
+      if (sesion) {
+        sesion.pedidos.forEach(p => {
+          p.items.forEach(item => {
+            totalActual += item.precio * item.cantidad;
+          });
+        });
+      }
+
+      return {
+        id: m.id,
+        nombre: m.nombre,
+        sector: m.sector,
+        ocupada: m.sesiones.length > 0,
+        totalActual,
+        horaInicio: sesion?.fechaInicio ?? null,
+      };
+    });
 
     return NextResponse.json(mesasConEstado);
-
   } catch (error) {
     return NextResponse.json({ error: "Error cargando mesas" }, { status: 500 });
   }
