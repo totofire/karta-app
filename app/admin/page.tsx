@@ -193,46 +193,54 @@ export default function AdminDashboard() {
       </div>
 
       {/* CONTENIDO PRINCIPAL */}
+      {/* CONTENIDO PRINCIPAL */}
       {vistaMapa ? (
-        <div className="relative w-full h-[600px] md:h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-hidden">
-          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+        // 1. Cambiamos overflow-hidden por overflow-auto
+        <div className="relative w-full h-[600px] md:h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-auto">
           
-          {mesasFiltradas.map((mesa: any) => (
-            <div
-              key={mesa.id}
-              style={{ transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)` }} 
-              className="absolute transition-all duration-500 ease-in-out" 
-            >
-              <div 
-                onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
-                className={`
-                  w-20 h-20 md:w-24 md:h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
-                  ${mesa.solicitaCuenta 
-                    ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" 
-                    : mesa.estado === "OCUPADA" 
-                      ? "bg-white border-red-500 text-red-600 z-10" 
-                      : "bg-gray-50 border-gray-300 text-gray-400 opacity-60"
-                  }
-                `}
+          {/* 2. Agregamos el "Lienzo Gigante" de 3000x3000px */}
+          <div className="relative w-[3000px] h-[3000px]">
+            
+            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+            
+            {mesasFiltradas.map((mesa: any) => (
+              <div
+                key={mesa.id}
+                style={{ transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)` }} 
+                className="absolute transition-all duration-500 ease-in-out" 
               >
-                {mesa.solicitaCuenta && (
-                  <div className="absolute -top-8 md:-top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 md:py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
-                    <HandCoins size={12} className="md:w-3.5 md:h-3.5" />
-                    PIDE CUENTA
-                  </div>
-                )}
-                <span className="font-black text-base md:text-xl">{mesa.nombre}</span>
-                {mesa.estado === "OCUPADA" && (
-                  <span className="text-[10px] md:text-xs font-bold mt-1 text-black bg-gray-100 px-1.5 md:px-2 rounded-md border border-gray-200">
-                    ${mesa.totalActual}
-                  </span>
-                )}
+                <div 
+                  onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
+                  className={`
+                    w-20 h-20 md:w-24 md:h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
+                    ${mesa.solicitaCuenta 
+                      ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" 
+                      : mesa.estado === "OCUPADA" 
+                        ? "bg-white border-red-500 text-red-600 z-10" 
+                        : "bg-gray-50 border-gray-300 text-gray-400 opacity-60"
+                    }
+                  `}
+                >
+                  {mesa.solicitaCuenta && (
+                    <div className="absolute -top-8 md:-top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 md:py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
+                      <HandCoins size={12} className="md:w-3.5 md:h-3.5" />
+                      PIDE CUENTA
+                    </div>
+                  )}
+                  <span className="font-black text-base md:text-xl">{mesa.nombre}</span>
+                  {mesa.estado === "OCUPADA" && (
+                    <span className="text-[10px] md:text-xs font-bold mt-1 text-black bg-gray-100 px-1.5 md:px-2 rounded-md border border-gray-200">
+                      ${mesa.totalActual}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
       ) : (
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
           {mesasFiltradas.map((mesa: any) => (
             <div
