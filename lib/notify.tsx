@@ -9,6 +9,7 @@ import {
   BellRing,
   Info
 } from 'lucide-react';
+import { Flame, GlassWater } from 'lucide-react';
 
 // Configuraciones de vibración
 const vibrateSuccess = () => typeof navigator !== 'undefined' && navigator.vibrate?.([100, 50, 100]);
@@ -44,6 +45,7 @@ export const notify = {
         </div>
       </div>
     ), { duration: 4000, position: 'bottom-center' });
+    
   },
 
   // 2. ERROR / CANCELADO (Estilo Alerta Roja - Ideal para fallos críticos)
@@ -118,5 +120,36 @@ export const notify = {
           </div>
         </div>
     ), { duration: 8000, position: 'top-right' });
-  }
-};
+  },
+  pedidoListo: (mesa: string, tipo: "cocina" | "barra" | "ambos") => {
+  vibrateSuccess();
+  const esBarra = tipo === "barra";
+  const esAmbos = tipo === "ambos";
+  const icono = esBarra
+    ? <GlassWater className="text-blue-500 h-6 w-6" strokeWidth={2.5} />
+    : <Flame className="text-orange-500 h-6 w-6" strokeWidth={2.5} />;
+  const color = esBarra ? "border-blue-500 from-blue-50" : "border-orange-500 from-orange-50";
+  const etiqueta = esBarra ? "Bebidas listas" : esAmbos ? "Cocina y barra listos" : "Platos listos";
+
+  toast.custom((t) => (
+    <div
+      onClick={() => toast.dismiss(t.id)}
+      className={`${
+        t.visible ? 'animate-in fade-in slide-in-from-top-5' : 'animate-out fade-out slide-out-to-top-5'
+      } max-w-sm w-full bg-white shadow-2xl rounded-2xl cursor-pointer pointer-events-auto ring-1 ring-black/5 border-l-4 ${color.split(' ')[0]} overflow-hidden`}
+    >
+      <div className={`p-4 flex items-center gap-4 bg-gradient-to-r ${color.split(' ')[1]} to-white`}>
+        <div className="h-12 w-12 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm border border-gray-100">
+          {icono}
+        </div>
+        <div className="flex-1">
+          <p className="text-xs font-black uppercase tracking-widest text-gray-400">{etiqueta}</p>
+          <p className="text-xl font-black text-gray-900 leading-tight">{mesa}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Listo para llevar a la mesa</p>
+        </div>
+        <X size={16} className="text-gray-300 shrink-0" />
+      </div>
+    </div>
+  ), { duration: 10000, position: 'top-right' });
+}
+}
