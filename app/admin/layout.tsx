@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Tags,
   GlassWater,
+  BarChart2,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -40,6 +41,7 @@ export default function AdminLayout({
     },
     { name: "Códigos QR", href: "/admin/qr", icon: QrCode },
     { name: "Historial Ventas", href: "/admin/historial", icon: History },
+    { name: "Métricas", href: "/admin/analytics", icon: BarChart2 },
   ];
 
   return (
