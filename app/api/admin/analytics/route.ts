@@ -634,6 +634,159 @@ export async function GET(req: Request) {
       });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // MODO: TIEMPO DE ESPERA
+    // Tiempo real que esperó el cliente: Pedido.fecha → Pedido.fechaDespacho
+    // Solo pedidos con fechaDespacho (= completamente despachados)
+    // ─────────────────────────────────────────────────────────────────
+    if (mode === "tiempo_espera") {
+
+      const ahora = new Date();
+      let startDate: Date;
+      let truncUnit: string;
+
+      if (range === "7d") {
+        startDate = new Date(ahora); startDate.setDate(ahora.getDate() - 6);
+        truncUnit = "day";
+      } else if (range === "4w") {
+        startDate = new Date(ahora); startDate.setDate(ahora.getDate() - 27);
+        truncUnit = "day";
+      } else {
+        startDate = new Date(ahora); startDate.setMonth(ahora.getMonth() - 11); startDate.setDate(1);
+        truncUnit = "month";
+      }
+      startDate.setHours(0, 0, 0, 0);
+
+      // ── Serie temporal: espera promedio por período ─────────────────
+      const rawSerie = await prisma.$queryRaw<{
+        periodo:    Date;
+        pedidos:    number;
+        avg_espera: number;  // minutos
+        min_espera: number;
+        max_espera: number;
+      }[]>`
+        SELECT
+          DATE_TRUNC(${truncUnit}, p."fechaDespacho")                              AS periodo,
+          COUNT(*)::int                                                            AS pedidos,
+          AVG(
+            EXTRACT(EPOCH FROM (p."fechaDespacho" - p.fecha)) / 60
+          )::numeric(10,1)                                                         AS avg_espera,
+          MIN(
+            EXTRACT(EPOCH FROM (p."fechaDespacho" - p.fecha)) / 60
+          )::numeric(10,1)                                                         AS min_espera,
+          MAX(
+            EXTRACT(EPOCH FROM (p."fechaDespacho" - p.fecha)) / 60
+          )::numeric(10,1)                                                         AS max_espera
+        FROM "Pedido" p
+        WHERE
+          p."localId"           = ${localId}
+          AND p."fechaDespacho" IS NOT NULL
+          AND p."fechaDespacho" >= ${startDate}
+          AND p."fechaDespacho" <= ${ahora}
+          AND p.estado != 'CANCELADO'
+        GROUP BY periodo
+        ORDER BY periodo ASC
+      `;
+
+      // Etiquetas legibles
+      const MESES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+      const serie = rawSerie.map((r) => {
+        const d   = new Date(r.periodo);
+        const dia = String(d.getUTCDate()).padStart(2, "0");
+        const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const label = range === "12m"
+          ? `${MESES_ES[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+          : `${dia}/${mes}`;
+        return {
+          label,
+          pedidos:    Number(r.pedidos),
+          avg_espera: parseFloat(Number(r.avg_espera).toFixed(1)),
+          min_espera: parseFloat(Number(r.min_espera).toFixed(1)),
+          max_espera: parseFloat(Number(r.max_espera).toFixed(1)),
+        };
+      });
+
+      // ── Distribución de tiempos (histograma fijo) ──────────────────
+      const distRows = await prisma.$queryRaw<{
+        bucket:   string;
+        cantidad: number;
+      }[]>`
+        SELECT
+          CASE
+            WHEN EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60 <= 5  THEN 'hasta_5'
+            WHEN EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60 <= 10 THEN '5_a_10'
+            WHEN EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60 <= 20 THEN '10_a_20'
+            ELSE 'mas_20'
+          END AS bucket,
+          COUNT(*)::int AS cantidad
+        FROM "Pedido"
+        WHERE
+          "localId"           = ${localId}
+          AND "fechaDespacho" IS NOT NULL
+          AND "fechaDespacho" >= ${startDate}
+          AND "fechaDespacho" <= ${ahora}
+          AND estado != 'CANCELADO'
+        GROUP BY bucket
+      `;
+
+      const bucketMap: Record<string, number> = {};
+      for (const r of distRows) bucketMap[r.bucket] = r.cantidad;
+
+      const distribucion = [
+        { label: "≤ 5 min",   key: "hasta_5",  cantidad: bucketMap["hasta_5"]  ?? 0, color: "#10b981" },
+        { label: "5–10 min",  key: "5_a_10",   cantidad: bucketMap["5_a_10"]   ?? 0, color: "#3b82f6" },
+        { label: "10–20 min", key: "10_a_20",  cantidad: bucketMap["10_a_20"]  ?? 0, color: "#f59e0b" },
+        { label: "> 20 min",  key: "mas_20",   cantidad: bucketMap["mas_20"]   ?? 0, color: "#ef4444" },
+      ];
+
+      const totalPedidos = distribucion.reduce((s, b) => s + b.cantidad, 0);
+      const distribConPct = distribucion.map((b) => ({
+        ...b,
+        pct: totalPedidos > 0 ? Math.round((b.cantidad / totalPedidos) * 100) : 0,
+      }));
+
+      // ── KPIs globales del período ──────────────────────────────────
+      const globalRow = await prisma.$queryRaw<{
+        total_pedidos:  number;
+        avg_espera:     number;
+        median_espera:  number;
+        bajo_10_pct:    number;  // % completados en ≤10 min
+      }[]>`
+        SELECT
+          COUNT(*)::int                                                         AS total_pedidos,
+          AVG(
+            EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60
+          )::numeric(10,1)                                                      AS avg_espera,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60
+          )::numeric(10,1)                                                      AS median_espera,
+          ROUND(
+            100.0 * COUNT(CASE WHEN EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60 <= 10 THEN 1 END)
+            / NULLIF(COUNT(*), 0)
+          )::int                                                                AS bajo_10_pct
+        FROM "Pedido"
+        WHERE
+          "localId"           = ${localId}
+          AND "fechaDespacho" IS NOT NULL
+          AND "fechaDespacho" >= ${startDate}
+          AND "fechaDespacho" <= ${ahora}
+          AND estado != 'CANCELADO'
+      `;
+
+      const g = globalRow[0] ?? { total_pedidos: 0, avg_espera: 0, median_espera: 0, bajo_10_pct: 0 };
+
+      return NextResponse.json({
+        serie,
+        distribucion: distribConPct,
+        resumen: {
+          totalPedidos:  g.total_pedidos,
+          avgEspera:     parseFloat(Number(g.avg_espera).toFixed(1)),
+          medianEspera:  parseFloat(Number(g.median_espera).toFixed(1)),
+          bajo10Pct:     g.bajo_10_pct ?? 0,
+        },
+      });
+    }
+
     return NextResponse.json({ error: "Modo no válido" }, { status: 400 });
 
   } catch (error) {

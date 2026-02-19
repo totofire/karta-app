@@ -33,12 +33,11 @@ model Local {
   direccion     String?
   slug          String?      @unique // Ej: "bar-de-tito"
   
-  estado        EstadoLocal  @default(ACTIVO) // 🔥 Control maestro del servicio
-  notasAdmin    String?      // Notas internas tuyas (ej: "Debe mayo")
+  estado        EstadoLocal  @default(ACTIVO)
+  notasAdmin    String?
   
   fechaAlta     DateTime     @default(now())
 
-  // Relaciones: Un local es dueño de todo esto
   usuarios      Usuario[]
   mesas         Mesa[]
   sectores      Sector[]
@@ -55,11 +54,10 @@ model Usuario {
   email     String   @unique
   password  String
   
-  // Seguridad y Tenancy
   rol       Rol      @default(ADMIN)
-  activo    Boolean  @default(true) // 🔥 Para bloquear empleados individuales sin borrarlos
+  activo    Boolean  @default(true)
   
-  localId   Int?     // Es opcional porque el SUPER_ADMIN no tiene local
+  localId   Int?
   local     Local?   @relation(fields: [localId], references: [id])
   
   fechaAlta DateTime @default(now())
@@ -77,7 +75,6 @@ model Configuracion {
   horaCierre   String  @default("00:00")
   cajaAbierta  Boolean @default(true)
   
-  // Relación 1 a 1 con Local
   localId      Int     @unique
   local        Local   @relation(fields: [localId], references: [id])
 }
@@ -159,7 +156,7 @@ model Sesion {
   mesaId         Int
   mesa           Mesa      @relation(fields: [mesaId], references: [id])
   
-  localId        Int       // Vital para reportes de venta por local
+  localId        Int
   local          Local     @relation(fields: [localId], references: [id])
 
   fechaInicio    DateTime  @default(now())
@@ -183,7 +180,7 @@ model Pedido {
   sesionId      Int
   sesion        Sesion       @relation(fields: [sesionId], references: [id])
   
-  localId       Int          // Desnormalización para filtrar pedidos por local rápidamente
+  localId       Int
   local         Local        @relation(fields: [localId], references: [id])
 
   nombreCliente String?
@@ -191,16 +188,19 @@ model Pedido {
   fecha         DateTime     @default(now())
   impreso       Boolean      @default(false)
   
+  // Permite calcular el tiempo real de espera del cliente (fecha → fechaDespacho).
+  fechaDespacho DateTime?
+
   items         ItemPedido[]
 
-  @@index([localId, estado]) // Para KDS (Cocina/Barra) del local específico
+  @@index([localId, estado])
   @@index([sesionId])
 }
 
 model ItemPedido {
   id            Int      @id @default(autoincrement())
   cantidad      Int
-  precio        Float    // Guardamos el precio al momento de la compra (histórico)
+  precio        Float
   observaciones String?
   estado        String   @default("PENDIENTE") // PENDIENTE, ENTREGADO
 

@@ -4,6 +4,7 @@ import TopProductos from "./TopProductos";
 import TicketSesiones from "./TicketSesiones";
 import RendimientoMesas from "./RendimientoMesas";
 import VelocidadServicio from "./VelocidadServicio";
+import TiempoEspera from "./TiempoEspera";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -13,10 +14,11 @@ import {
   Minus, ShoppingBag, Trophy, Loader2, UtensilsCrossed, Clock, Armchair, Timer,
 } from "lucide-react";
 
+
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 type Range     = "7d" | "4w" | "12m";
 type ChartType = "area" | "bar";
-type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "velocidad";
+type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "velocidad"  | "espera";
 
 interface DataPoint {
   label: string; fecha: string; total: number; sesiones: number;
@@ -99,6 +101,7 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: "ticket",     label: "Ticket",     icon: Clock,           desc: "Promedio, duración y horarios"    },
   { key: "mesas",      label: "Mesas",      icon: Armchair,        desc: "Rendimiento por mesa"             },
   { key: "velocidad",  label: "Velocidad",  icon: Timer,           desc: "Tiempo de servicio y atención"    },
+  { key: "espera",     label: "Espera",     icon: Timer,           desc: "Tiempo de espera y demora"        },
 ];
 
 const RANGES: { key: Range; label: string }[] = [
@@ -142,7 +145,7 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
             <BarChart2 className="text-slate-400" size={32} />
-            ANALYTICS
+            Métricas & Análisis
           </h1>
           <p className="text-slate-500 font-medium mt-1">Métricas clave de tu negocio</p>
         </div>
@@ -387,7 +390,12 @@ export default function AnalyticsPage() {
               <VelocidadServicio range={range} />
             </div>
           )}
-
+        {/* TAB 5 — ESPERA */}
+          {tab === "espera" && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <TiempoEspera range={range} />
+            </div>
+          )}
         </div>
       </div>
     </div>

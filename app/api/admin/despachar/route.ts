@@ -13,57 +13,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
     }
 
-    // 1. Determinar el flag de categoría basado en el sector
-    const esCocina = sector === 'cocina';
+    const esCocina = sector === "cocina";
 
-    // 2. Buscar items PENDIENTES de este pedido + VALIDAR QUE SEA DE MI LOCAL
+    // 1. Items PENDIENTES de este sector en este pedido (validando que sea de mi local)
     const itemsAActualizar = await prisma.itemPedido.findMany({
       where: {
         pedidoId: Number(pedidoId),
-        estado: "PENDIENTE",
-        // SEGURIDAD: Validamos que el PEDIDO sea de mi local
-        pedido: {
-            localId: localId 
-        },
-        producto: {
-          categoria: {
-            imprimirCocina: esCocina
-          }
-        }
+        estado:   "PENDIENTE",
+        pedido:   { localId },
+        producto: { categoria: { imprimirCocina: esCocina } },
       },
-      select: { id: true }
+      select: { id: true },
     });
 
-    const idsParaActualizar = itemsAActualizar.map(i => i.id);
-
-    // 3. Actualizar esos items a "ENTREGADO"
-    if (idsParaActualizar.length > 0) {
+    if (itemsAActualizar.length > 0) {
       await prisma.itemPedido.updateMany({
-        where: {
-          id: { in: idsParaActualizar }
-        },
-        data: { estado: "ENTREGADO" }
+        where: { id: { in: itemsAActualizar.map((i) => i.id) } },
+        data:  { estado: "ENTREGADO" },
       });
     }
 
-    // 4. VERIFICACIÓN GLOBAL DEL PEDIDO
+    // 2. ¿Quedan items PENDIENTES (de cualquier sector) en este pedido?
     const itemsPendientesTotal = await prisma.itemPedido.count({
-      where: {
-        pedidoId: Number(pedidoId),
-        estado: "PENDIENTE"
-      }
+      where: { pedidoId: Number(pedidoId), estado: "PENDIENTE" },
     });
 
-    // 5. Actualizar estado del PEDIDO PADRE
+    // 3. Actualizar estado del pedido padre
     if (itemsPendientesTotal === 0) {
+      // Pedido 100% listo → guardamos el timestamp de despacho para analytics
       await prisma.pedido.update({
         where: { id: Number(pedidoId) },
-        data: { estado: "ENTREGADO" }
+        data: {
+          estado:        "ENTREGADO",
+          fechaDespacho: new Date(), // 🔥 tiempo real de espera del cliente
+        },
       });
     } else {
       await prisma.pedido.update({
         where: { id: Number(pedidoId) },
-        data: { estado: "EN_PREPARACION" }
+        data:  { estado: "EN_PREPARACION" },
       });
     }
 
