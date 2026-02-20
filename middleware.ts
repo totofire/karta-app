@@ -3,56 +3,64 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 export async function middleware(request: NextRequest) {
-  // 1. Obtener el token de la cookie
   const token = request.cookies.get("token")?.value;
-  const path = request.nextUrl.pathname;
+  const path  = request.nextUrl.pathname;
 
-  // 2. Definir rutas protegidas
-  const esRutaAdmin = path.startsWith("/admin");
-  const esRutaMozo = path.startsWith("/mozo");
-  const esRutaCocina = path.startsWith("/cocina");
-  const esRutaBarra = path.startsWith("/barra");
+  // ── Rutas protegidas ─────────────────────────────────────────────
+  const esRutaAdmin      = path.startsWith("/admin");
+  const esRutaMozo       = path.startsWith("/mozo");
+  const esRutaCocina     = path.startsWith("/cocina");
+  const esRutaBarra      = path.startsWith("/barra");
+  const esRutaSuperAdmin = path.startsWith("/superadmin");
 
-  const esRutaProtegida = esRutaAdmin || esRutaMozo || esRutaCocina || esRutaBarra;
+  const esRutaProtegida = esRutaAdmin || esRutaMozo || esRutaCocina || esRutaBarra || esRutaSuperAdmin;
 
-  // 3. Si es ruta protegida y NO hay token, mandar al login
+  // Sin token en ruta protegida → login
   if (esRutaProtegida && !token) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // 4. Si hay token, lo validamos y verificamos roles
   if (token) {
     try {
       const secret = new TextEncoder().encode(process.env.JWT_SECRET || "secret");
       const { payload } = await jwtVerify(token, secret);
-      
-      const rol = payload.rol as string; // Asumimos que guardaste el rol en el token
+      const rol = payload.rol as string;
 
-      // --- CASO A: Usuario logueado intentando entrar al Login ---
+      // ── CASO A: Ya logueado intentando entrar al login ────────────
       if (path === "/login") {
-        if (rol === "ADMIN" || rol === "SUPER_ADMIN") return NextResponse.redirect(new URL("/admin", request.url));
-        if (rol === "MOZO") return NextResponse.redirect(new URL("/mozo", request.url));
-        if (rol === "COCINA") return NextResponse.redirect(new URL("/cocina", request.url));
-        if (rol === "BARRA") return NextResponse.redirect(new URL("/barra", request.url));
+        if (rol === "SUPER_ADMIN")  return NextResponse.redirect(new URL("/superadmin/dashboard", request.url));
+        if (rol === "ADMIN")        return NextResponse.redirect(new URL("/admin", request.url));
+        if (rol === "MOZO")         return NextResponse.redirect(new URL("/mozo", request.url));
+        if (rol === "COCINA")       return NextResponse.redirect(new URL("/cocina", request.url));
+        if (rol === "BARRA")        return NextResponse.redirect(new URL("/barra", request.url));
       }
 
-      // --- CASO B: Protección de Roles (Seguridad) ---
-      
-      // Si un MOZO intenta entrar al ADMIN -> Lo mandamos a /mozo
+      // ── CASO B: Protección del panel SUPER_ADMIN ──────────────────
+      // Solo SUPER_ADMIN puede entrar a /superadmin
+      if (esRutaSuperAdmin && rol !== "SUPER_ADMIN") {
+        if (rol === "ADMIN") return NextResponse.redirect(new URL("/admin", request.url));
+        if (rol === "MOZO")  return NextResponse.redirect(new URL("/mozo", request.url));
+        return NextResponse.redirect(new URL("/login", request.url));
+      }
+
+      // SUPER_ADMIN no debería estar en paneles de locales
+      if (rol === "SUPER_ADMIN" && (esRutaAdmin || esRutaMozo || esRutaCocina || esRutaBarra)) {
+        return NextResponse.redirect(new URL("/superadmin/dashboard", request.url));
+      }
+
+      // ── CASO C: Protección de roles existentes ────────────────────
+      // MOZO no puede entrar al panel de ADMIN
       if (esRutaAdmin && rol === "MOZO") {
         return NextResponse.redirect(new URL("/mozo", request.url));
       }
 
-      // Si un ADMIN intenta entrar a cosas de MOZO -> Lo dejamos (o podrías bloquearlo si quieres)
-      // Generalmente el Admin tiene permiso de "Superusuario", así que lo dejamos pasar.
-
-      // Si COCINA intenta entrar a ADMIN o MOZO -> Lo mandamos a /cocina
+      // COCINA no puede entrar a ADMIN ni MOZO
       if ((esRutaAdmin || esRutaMozo) && rol === "COCINA") {
         return NextResponse.redirect(new URL("/cocina", request.url));
       }
 
-    } catch (error) {
-      // Si el token es inválido o expiró, lo borramos y mandamos al login
+    } catch {
+      // Token inválido o expirado → borrar y mandar al login
       const response = NextResponse.redirect(new URL("/login", request.url));
       response.cookies.delete("token");
       return response;
@@ -62,8 +70,13 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Configuración: A qué rutas aplica
 export const config = {
-  // Agregué /mozo aquí para que el middleware lo intercepte
-  matcher: ["/admin/:path*", "/cocina/:path*", "/barra/:path*", "/mozo/:path*", "/login"],
+  matcher: [
+    "/admin/:path*",
+    "/superadmin/:path*",
+    "/cocina/:path*",
+    "/barra/:path*",
+    "/mozo/:path*",
+    "/login",
+  ],
 };
