@@ -27,14 +27,27 @@ enum EstadoLocal {
   DEMO        // Periodo de prueba: Funcionalidad completa por tiempo limitado
 }
 
+enum Plan {
+  DEMO        // Período de prueba gratuito
+  BASIC       // Plan base
+  PRO         // Plan intermedio
+  ENTERPRISE  // Plan full
+}
+
 model Local {
   id            Int          @id @default(autoincrement())
   nombre        String
   direccion     String?
   slug          String?      @unique // Ej: "bar-de-tito"
   
-  estado        EstadoLocal  @default(ACTIVO)
-  notasAdmin    String?
+  estado        EstadoLocal  @default(DEMO)
+  notasAdmin    String?      // Notas internas tuyas sobre el local
+  
+  // ── Plan y facturación ──────────────────────────────────────────
+  plan          Plan         @default(DEMO)
+  montoPlan     Float        @default(0)   // Lo que paga por mes (0 en demo)
+  trialHasta    DateTime?                  // Fecha en que vence el período demo
+  fechaVence    DateTime?                  // Vencimiento del período pago actual
   
   fechaAlta     DateTime     @default(now())
 
@@ -52,10 +65,14 @@ model Usuario {
   id        Int      @id @default(autoincrement())
   nombre    String
   email     String   @unique
-  password  String
+  password  String?  // Nullable: el admin no tiene password hasta que activa su cuenta
   
   rol       Rol      @default(ADMIN)
-  activo    Boolean  @default(true)
+  activo    Boolean  @default(false) // Empieza inactivo hasta que activa con el invite
+  
+  // ── Invite flow ─────────────────────────────────────────────────
+  inviteToken   String?   @unique  // Token que se manda por mail para activar cuenta
+  inviteExpira  DateTime?          // El token expira a las 48hs de creado
   
   localId   Int?
   local     Local?   @relation(fields: [localId], references: [id])
