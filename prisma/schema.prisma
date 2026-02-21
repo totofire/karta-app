@@ -112,6 +112,7 @@ model Sector {
 model Mesa {
   id       Int     @id @default(autoincrement())
   nombre   String
+  numero   Int     @default(0)   // ← NUEVO: número correlativo auto-asignado
   qr_token String  @unique @default(cuid())
   activo   Boolean @default(true)
   sector   String  @default("General") 

@@ -25,17 +25,21 @@ export default function MesasPage() {
 
   // --- FORMULARIOS ---
   const [modo, setModo] = useState<"manual" | "rapida">("manual");
-  
+
   // MODIFICADO: Eliminé qr_token del estado manual
   const [manual, setManual] = useState({
     nombre: "",
     sector: "",
   });
 
-  const [rapida, setRapida] = useState<{ cantidad: number | ""; inicio: number | ""; sector: string }>({ 
-    cantidad: 10, 
-    inicio: 1, 
-    sector: "" 
+  const [rapida, setRapida] = useState<{
+    cantidad: number | "";
+    inicio: number | "";
+    sector: string;
+  }>({
+    cantidad: 10,
+    inicio: 1,
+    sector: "",
   });
 
   // --- EDICIÓN ---
@@ -60,10 +64,10 @@ export default function MesasPage() {
       }
 
       const dataMesas = await resMesas.json();
-      
+
       if (Array.isArray(dataMesas)) {
         setMesas(dataMesas);
-        
+
         // Calcular siguiente número sugerido
         const ultimoNumero = dataMesas.reduce((max: number, m: any) => {
           const match = m.nombre.match(/(\d+)/);
@@ -81,11 +85,10 @@ export default function MesasPage() {
           setSectores(dataSectores);
         }
       }
-
     } catch (error) {
       console.error("Error en cargar():", error);
       toast.error("Error cargando datos");
-      setMesas([]); 
+      setMesas([]);
     }
   };
 
@@ -109,7 +112,7 @@ export default function MesasPage() {
       toast.success("Sector creado");
       setNuevoSector("");
       setAgregandoSector(false);
-      cargar(); 
+      cargar();
     } else {
       const data = await res.json();
       toast.error(data.error || "Error al crear");
@@ -139,9 +142,9 @@ export default function MesasPage() {
 
   const crearRapida = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (rapida.cantidad === "" || rapida.inicio === "") {
-        return toast.error("Ingresá cantidades válidas");
+      return toast.error("Ingresá cantidades válidas");
     }
 
     const toastId = toast.loading("Generando mesas...");
@@ -341,7 +344,7 @@ export default function MesasPage() {
                     onChange={(e) => handleNombreChange(e.target.value)}
                   />
                 </div>
-                
+
                 {/* ELIMINADO: INPUT TOKEN (AUTO) */}
 
                 <button className="bg-gray-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-black transition-transform active:scale-95 shadow-md">
@@ -383,7 +386,8 @@ export default function MesasPage() {
                     onChange={(e) =>
                       setRapida({
                         ...rapida,
-                        cantidad: e.target.value === "" ? "" : Number(e.target.value),
+                        cantidad:
+                          e.target.value === "" ? "" : Number(e.target.value),
                       })
                     }
                   />
@@ -399,7 +403,8 @@ export default function MesasPage() {
                     onChange={(e) =>
                       setRapida({
                         ...rapida,
-                        inicio: e.target.value === "" ? "" : Number(e.target.value),
+                        inicio:
+                          e.target.value === "" ? "" : Number(e.target.value),
                       })
                     }
                   />
@@ -513,9 +518,17 @@ export default function MesasPage() {
                         <>
                           <td className="p-4 pl-6">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600 font-black text-sm">
-                                {mesa.nombre.replace(/\D/g, "") || "#"}
-                              </div>
+                              {/* Badge número — pill horizontal */}
+                              <span className="inline-flex items-center gap-1 bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1 shrink-0">
+                                <span className="text-[10px] font-bold text-gray-400 leading-none">
+                                  #
+                                </span>
+                                <span className="text-sm font-black text-gray-700 leading-none">
+                                  {mesa.numero || "—"}
+                                </span>
+                              </span>
+
+                              {/* Nombre */}
                               <span className="font-bold text-gray-700 text-base">
                                 {mesa.nombre}
                               </span>
