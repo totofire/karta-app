@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 import { 
   RefreshCcw, Filter, Clock, DollarSign, Store, Printer, 
-  CheckCircle2, X, HandCoins, Map, LayoutGrid, PenTool 
+  CheckCircle2, X, HandCoins, Map, LayoutGrid, PenTool, MapPin
 } from "lucide-react";
 
 const supabase = createClient(
@@ -19,42 +19,55 @@ const fetcher = (url: string) => fetch(url).then(async (res) => {
   return res.json();
 });
 
+// ─── PALETA (debe ser idéntica a la del editor) ───────────────────────────────
+const PALETA = [
+  { borde: "#ef4444", fondo: "rgba(254,242,242,0.55)", titulo: "#b91c1c" },
+  { borde: "#3b82f6", fondo: "rgba(239,246,255,0.55)", titulo: "#1d4ed8" },
+  { borde: "#10b981", fondo: "rgba(236,253,245,0.55)", titulo: "#065f46" },
+  { borde: "#f59e0b", fondo: "rgba(255,251,235,0.55)", titulo: "#92400e" },
+  { borde: "#8b5cf6", fondo: "rgba(245,243,255,0.55)", titulo: "#5b21b6" },
+  { borde: "#14b8a6", fondo: "rgba(240,253,250,0.55)", titulo: "#0f766e" },
+];
+
+interface ZonaRect { x: number; y: number; w: number; h: number }
+
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null); 
   const [vistaMapa, setVistaMapa] = useState(false);
+  const [zonasLayout, setZonasLayout] = useState<Record<string, ZonaRect>>({});
 
-  // 🔥 Sin refreshInterval — Supabase lo reemplaza
   const { data: mesas = [], mutate, isLoading: cargando } = useSWR('/api/admin/estado', fetcher, {
     revalidateOnFocus: true,
     fallbackData: []
   });
   
-  const { data: sectoresRaw } = useSWR('/api/admin/sectores', fetcher, {
-    fallbackData: []
-  });
+  const { data: sectoresRaw } = useSWR('/api/admin/sectores', fetcher, { fallbackData: [] });
+  const sectores: any[] = Array.isArray(sectoresRaw) ? sectoresRaw : [];
 
-  const sectores = Array.isArray(sectoresRaw) ? sectoresRaw : [];
+  // Mapa nombre → color estable por índice
+  const colorDe = (nombre: string) => {
+    const idx = sectores.findIndex((s: any) => s.nombre === nombre);
+    return PALETA[(idx < 0 ? 0 : idx) % PALETA.length];
+  };
 
-  // 🔥 Supabase Realtime — escucha Sesion Y Pedido
+  // Cargar layout de zonas solo cuando se activa la vista mapa
+  useEffect(() => {
+    if (!vistaMapa) return;
+    fetch("/api/admin/sectores/layout")
+      .then(r => r.json())
+      .then(data => setZonasLayout(data || {}))
+      .catch(() => {});
+  }, [vistaMapa]);
+
+  // Supabase Realtime
   useEffect(() => {
     const canal = supabase
       .channel("cambios-admin-dashboard")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Sesion" },
-        () => mutate()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Pedido" },
-        () => mutate()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "Sesion" }, () => mutate())
+      .on("postgres_changes", { event: "*", schema: "public", table: "Pedido"  }, () => mutate())
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(canal);
-    };
+    return () => { supabase.removeChannel(canal); };
   }, [mutate]);
 
   const imprimirTicketCierre = (mesa: any) => {
@@ -114,7 +127,6 @@ export default function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sesionId: mesaParaCobrar.sesionId }),
       });
-
       if (res.ok) {
         toast.success("Mesa cerrada 💰", { id: toastId });
         mutate(); 
@@ -122,9 +134,7 @@ export default function AdminDashboard() {
       } else {
         toast.error("Error al cerrar", { id: toastId });
       }
-    } catch (error) {
-      toast.error("Error de conexión", { id: toastId });
-    }
+    } catch { toast.error("Error de conexión", { id: toastId }); }
   };
 
   const mesasFiltradas = useMemo(() => {
@@ -133,6 +143,11 @@ export default function AdminDashboard() {
       ? mesas 
       : mesas.filter((m: any) => m.sector === filtroSector);
   }, [mesas, filtroSector]);
+
+  // Sectores que tienen zona guardada y mesas activas (para el filtro del mapa)
+  const sectoresConZona = useMemo(() => {
+    return sectores.filter(s => !!zonasLayout[s.nombre]);
+  }, [sectores, zonasLayout]);
 
   return (
     <div className="space-y-6 relative h-full flex flex-col w-full max-w-[100vw] overflow-x-hidden">
@@ -193,49 +208,153 @@ export default function AdminDashboard() {
       </div>
 
       {/* CONTENIDO PRINCIPAL */}
-      {/* CONTENIDO PRINCIPAL */}
       {vistaMapa ? (
-        // 1. Cambiamos overflow-hidden por overflow-auto
-        <div className="relative w-full h-[600px] md:h-[700px] bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-auto">
+
+        <div className="relative w-full bg-gray-100 rounded-3xl border border-gray-200 shadow-inner overflow-auto"
+          style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
           
-          {/* 2. Agregamos el "Lienzo Gigante" de 3000x3000px */}
           <div className="relative w-[3000px] h-[3000px]">
             
-            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
-            
+            {/* Cuadrícula de fondo */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none"
+              style={{
+                backgroundImage: "linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)",
+                backgroundSize: "40px 40px",
+              }}
+            />
+
+            {/* ── ZONAS DE SECTOR (capa de fondo) ──────────────────────── */}
+            {sectoresConZona
+              .filter(s => filtroSector === "Todos" || s.nombre === filtroSector)
+              .map(s => {
+                const zona  = zonasLayout[s.nombre];
+                const color = colorDe(s.nombre);
+                return (
+                  <div
+                    key={s.nombre}
+                    className="absolute pointer-events-none"
+                    style={{
+                      left:   zona.x,
+                      top:    zona.y,
+                      width:  zona.w,
+                      height: zona.h,
+                      zIndex: 1,
+                    }}
+                  >
+                    {/* Fondo semitransparente */}
+                    <div style={{
+                      position:   "absolute",
+                      inset:      0,
+                      borderRadius: 20,
+                      background: color.fondo,
+                      border:     `2px dashed ${color.borde}`,
+                      boxShadow:  `inset 0 0 40px ${color.borde}18`,
+                    }} />
+
+                    {/* Patrón punteado */}
+                    <div style={{
+                      position:        "absolute",
+                      inset:           0,
+                      borderRadius:    20,
+                      opacity:         .15,
+                      backgroundImage: `radial-gradient(circle, ${color.borde} 1px, transparent 1px)`,
+                      backgroundSize:  "22px 22px",
+                    }} />
+
+                    {/* Esquinas tipo plano arquitectónico */}
+                    {([
+                      { top:-2,    left:-2,   bt:`3px solid ${color.borde}`, bl:`3px solid ${color.borde}`,  br:"5px 0 0 0" },
+                      { top:-2,    right:-2,  bt:`3px solid ${color.borde}`, br2:`3px solid ${color.borde}`, br:"0 5px 0 0" },
+                      { bottom:-2, left:-2,   bb:`3px solid ${color.borde}`, bl:`3px solid ${color.borde}`,  br:"0 0 0 5px" },
+                      { bottom:-2, right:-2,  bb:`3px solid ${color.borde}`, br2:`3px solid ${color.borde}`, br:"0 0 5px 0" },
+                    ] as any[]).map((c, i) => (
+                      <div key={i} style={{
+                        position:"absolute", width:22, height:22,
+                        top:c.top, left:c.left, right:c.right, bottom:c.bottom,
+                        borderTop:c.bt, borderBottom:c.bb,
+                        borderLeft:c.bl, borderRight:c.br2,
+                        borderRadius:c.br,
+                      }} />
+                    ))}
+
+                    {/* Badge nombre sector */}
+                    <div style={{
+                      position:    "absolute",
+                      top:         -20,
+                      left:        12,
+                      display:     "flex",
+                      alignItems:  "center",
+                      gap:         6,
+                    }}>
+                      <span style={{
+                        background:    color.borde,
+                        color:         "#fff",
+                        borderRadius:  20,
+                        padding:       "3px 10px",
+                        fontSize:      11,
+                        fontWeight:    900,
+                        letterSpacing: ".08em",
+                        textTransform: "uppercase",
+                        display:       "flex",
+                        alignItems:    "center",
+                        gap:           5,
+                        boxShadow:     `0 2px 8px ${color.borde}44`,
+                        whiteSpace:    "nowrap",
+                      }}>
+                        <MapPin size={10} strokeWidth={3} />
+                        {s.nombre}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* ── MESAS (capa superior) ─────────────────────────────────── */}
             {mesasFiltradas.map((mesa: any) => (
               <div
                 key={mesa.id}
-                style={{ transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)` }} 
-                className="absolute transition-all duration-500 ease-in-out" 
+                style={{
+                  position:  "absolute",
+                  transform: `translate(${mesa.posX || 0}px, ${mesa.posY || 0}px)`,
+                  zIndex:    10,
+                  transition: "transform .5s ease-in-out",
+                }}
               >
                 <div 
                   onClick={() => mesa.estado === "OCUPADA" ? setMesaParaCobrar(mesa) : null}
                   className={`
                     w-20 h-20 md:w-24 md:h-24 rounded-2xl shadow-md border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform relative bg-white
                     ${mesa.solicitaCuenta 
-                      ? "bg-yellow-50 border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-50 animate-pulse z-50" 
+                      ? "border-yellow-500 shadow-yellow-200 ring-4 ring-yellow-200 ring-opacity-60 animate-pulse" 
                       : mesa.estado === "OCUPADA" 
-                        ? "bg-white border-red-500 text-red-600 z-10" 
-                        : "bg-gray-50 border-gray-300 text-gray-400 opacity-60"
+                        ? "border-red-400 text-red-600" 
+                        : "border-gray-300 text-gray-400 opacity-60"
                     }
                   `}
                 >
+                  {/* Sillas decorativas */}
+                  <div className="absolute -top-2 w-9 h-2 bg-gray-200 rounded-full pointer-events-none" />
+                  <div className="absolute -bottom-2 w-9 h-2 bg-gray-200 rounded-full pointer-events-none" />
+                  <div className="absolute -left-2 h-9 w-2 bg-gray-200 rounded-full pointer-events-none" />
+                  <div className="absolute -right-2 h-9 w-2 bg-gray-200 rounded-full pointer-events-none" />
+
                   {mesa.solicitaCuenta && (
-                    <div className="absolute -top-8 md:-top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 md:py-1.5 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-50">
-                      <HandCoins size={12} className="md:w-3.5 md:h-3.5" />
+                    <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-20">
+                      <HandCoins size={10} />
                       PIDE CUENTA
                     </div>
                   )}
-                  <span className="font-black text-base md:text-xl">{mesa.nombre}</span>
+
+                  <span className="font-black text-base md:text-lg leading-none">{mesa.nombre}</span>
                   {mesa.estado === "OCUPADA" && (
-                    <span className="text-[10px] md:text-xs font-bold mt-1 text-black bg-gray-100 px-1.5 md:px-2 rounded-md border border-gray-200">
+                    <span className="text-[10px] md:text-xs font-bold mt-1 text-black bg-gray-100 px-1.5 rounded-md border border-gray-200">
                       ${mesa.totalActual}
                     </span>
                   )}
                 </div>
               </div>
             ))}
+
           </div>
         </div>
 
@@ -310,8 +429,8 @@ export default function AdminDashboard() {
 
       {/* MODAL DE COBRO */}
       {mesaParaCobrar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="bg-red-600 p-6 text-white text-center relative">
               <button onClick={() => setMesaParaCobrar(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors active:scale-95">
                 <X size={20} />

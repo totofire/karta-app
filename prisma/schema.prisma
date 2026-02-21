@@ -94,6 +94,8 @@ model Configuracion {
   
   localId      Int     @unique
   local        Local   @relation(fields: [localId], references: [id])
+  mapaZonas Json?
+
 }
 
 model Sector {
