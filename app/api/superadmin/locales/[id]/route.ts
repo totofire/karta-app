@@ -9,12 +9,13 @@ import { getSuperAdmin } from "@/lib/auth";
 // ─────────────────────────────────────────────────────────────────────────────
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSuperAdmin();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
-  const localId = Number(params.id);
+  const { id } = await params;
+  const localId = Number(id);
   if (isNaN(localId)) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
 
   const local = await prisma.local.findUnique({ where: { id: localId } });
@@ -26,8 +27,8 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {};
 
-    if (estado    !== undefined) data.estado    = estado;
-    if (plan      !== undefined) data.plan      = plan;
+    if (estado     !== undefined) data.estado     = estado;
+    if (plan       !== undefined) data.plan       = plan;
     if (notasAdmin !== undefined) data.notasAdmin = notasAdmin;
 
     if (montoPlan !== undefined) data.montoPlan = Number(montoPlan);
@@ -79,12 +80,13 @@ export async function PATCH(
 // ─────────────────────────────────────────────────────────────────────────────
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSuperAdmin();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
-  const localId = Number(params.id);
+  const { id } = await params;
+  const localId = Number(id);
   if (isNaN(localId)) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
 
   const local = await prisma.local.findUnique({ where: { id: localId } });
