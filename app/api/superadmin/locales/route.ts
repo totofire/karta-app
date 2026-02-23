@@ -4,8 +4,6 @@ import { getSuperAdmin } from "@/lib/auth";
 import { randomBytes } from "crypto";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/superadmin/locales
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,7 +119,9 @@ export async function POST(req: Request) {
 
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/activar-cuenta?token=${inviteToken}`;
 
-    // ── Enviar mail con Resend ─────────────────────────────────────────────
+    // ── Inicialización lazy: solo se instancia al ejecutar el handler ─────
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
     const { error: resendError } = await resend.emails.send({
       from: "Karta <onboarding@resend.dev>",
       to:      emailAdmin,
