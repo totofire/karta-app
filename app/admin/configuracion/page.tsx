@@ -1,17 +1,16 @@
-// app/admin/configuracion/page.tsx (Server Component)
+// app/admin/configuracion/page.tsx
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
 import MercadoPagoConnect from "@/components/MercadoPagoConnect";
 
+export const dynamic = "force-dynamic"; // ← ESTO FALTABA
+
 export default async function ConfiguracionPage({ searchParams }: any) {
   const localId = await getLocalId();
-  const local = await prisma.local.findUnique({
-    where: { id: localId! },
+  const local = localId ? await prisma.local.findUnique({
+    where: { id: localId },
     select: { mpEmail: true, mpConectadoEn: true },
-  });
-
-  // Mostrar toast según resultado del OAuth
-  // (lo maneja el componente via searchParams)
+  }) : null;
 
   return (
     <div className="max-w-lg mx-auto space-y-6 p-6">
