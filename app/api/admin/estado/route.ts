@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!localId)
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {
     const mesas = await prisma.mesa.findMany({
@@ -16,15 +17,16 @@ export async function GET() {
         nombre: true,
         qr_token: true,
         sector: true,
-        posX: true, 
+        posX: true,
         posY: true,
         sesiones: {
           where: { fechaFin: null },
-          take: 1, 
+          take: 1,
           select: {
             id: true,
             fechaInicio: true,
-            solicitaCuenta: true, 
+            solicitaCuenta: true,
+            metodoPago: true,
             pedidos: {
               where: { estado: { not: "CANCELADO" } },
               orderBy: { fecha: "desc" },
@@ -35,34 +37,42 @@ export async function GET() {
                   select: {
                     cantidad: true,
                     precio: true,
-                    producto: { 
-                        select: { nombre: true } 
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                    producto: {
+                      select: { nombre: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
-      orderBy: [{ sector: 'asc' }, { nombre: 'asc' }]
+      orderBy: [{ sector: "asc" }, { nombre: "asc" }],
     });
 
     const estadoMesas = mesas.map((mesa) => {
       const sesionActiva = mesa.sesiones[0];
-      
+
       let infoSesion: any = {
-        estado: 'LIBRE',
+        estado: "LIBRE",
         sesionId: null,
         horaInicio: null,
         totalActual: 0,
         ultimoPedido: null,
         detalles: [],
-        solicitaCuenta: null
+        solicitaCuenta: null,
       };
 
       if (sesionActiva) {
-        const mapaDetalles = new Map<string, { producto: string; cantidad: number; precioUnitario: number; subtotal: number }>();
+        const mapaDetalles = new Map<
+          string,
+          {
+            producto: string;
+            cantidad: number;
+            precioUnitario: number;
+            subtotal: number;
+          }
+        >();
         let totalGeneral = 0;
 
         for (const pedido of sesionActiva.pedidos) {
@@ -88,17 +98,21 @@ export async function GET() {
         const detalles = Array.from(mapaDetalles.values());
         const ultimoPedido =
           sesionActiva.pedidos.length > 0
-            ? new Date(sesionActiva.pedidos[0].fecha).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            ? new Date(sesionActiva.pedidos[0].fecha).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
             : null;
 
         infoSesion = {
-            estado: 'OCUPADA',
-            sesionId: sesionActiva.id,
-            horaInicio: sesionActiva.fechaInicio,
-            totalActual: totalGeneral,
-            ultimoPedido,
-            detalles: detalles,
-            solicitaCuenta: sesionActiva.solicitaCuenta 
+          estado: "OCUPADA",
+          sesionId: sesionActiva.id,
+          horaInicio: sesionActiva.fechaInicio,
+          totalActual: totalGeneral,
+          ultimoPedido,
+          detalles: detalles,
+          solicitaCuenta: sesionActiva.solicitaCuenta,
+          metodoPago: sesionActiva.metodoPago ?? null, // 👈 agregar esta línea
         };
       }
 
@@ -107,15 +121,18 @@ export async function GET() {
         nombre: mesa.nombre,
         qr_token: mesa.qr_token,
         sector: mesa.sector || "General",
-        posX: mesa.posX, 
-        posY: mesa.posY, 
-        ...infoSesion 
+        posX: mesa.posX,
+        posY: mesa.posY,
+        ...infoSesion,
       };
     });
 
     return NextResponse.json(estadoMesas);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Error obteniendo estado" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Error obteniendo estado" },
+      { status: 500 },
+    );
   }
 }

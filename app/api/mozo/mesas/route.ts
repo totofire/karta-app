@@ -69,7 +69,8 @@ export async function GET() {
         horaInicio: sesion?.fechaInicio ?? null,
         sesionId: sesion?.id ?? null,
         solicitaCuenta: sesion?.solicitaCuenta ?? null,
-        tokenEfimero: sesion?.tokenEfimero ?? null, // 👈 agregar esto
+        metodoPago: sesion?.metodoPago ?? null, // 👈 agregar esto
+        tokenEfimero: sesion?.tokenEfimero ?? null,
         detalles,
       };
     });

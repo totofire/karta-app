@@ -28,6 +28,12 @@ const PALETA = [
   { borde: "#14b8a6", fondo: "rgba(240,253,250,0.55)", titulo: "#0f766e" },
 ];
 
+const METODO_CONFIG: Record<string, { emoji: string; label: string; labelCorto: string; bg: string; text: string; border: string }> = {
+  QR:       { emoji: "📱", label: "Pago con QR / Digital",           labelCorto: "QR",       bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200"   },
+  TARJETA:  { emoji: "💳", label: "Pago con tarjeta — llevá el POS", labelCorto: "Tarjeta",  bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
+  EFECTIVO: { emoji: "💵", label: "Pago en efectivo — llevá cambio", labelCorto: "Efectivo", bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200"  },
+};
+
 interface ZonaRect { x: number; y: number; w: number; h: number }
 
 // ─── CANVAS CON PAN TIPO GOOGLE MAPS ─────────────────────────────────────────
@@ -72,14 +78,13 @@ function MapCanvas({ zonasLayout, sectoresConZona, mesasFiltradas, filtroSector,
       onTouchMove={e => { if (e.touches.length === 1) movePan(e.touches[0].clientX, e.touches[0].clientY); }}
       onTouchEnd={endPan}
     >
-      {/* Canvas desplazable */}
       <div style={{
         position: "absolute",
         width: 4000, height: 4000,
         transform: `translate(${pan.x}px, ${pan.y}px)`,
         willChange: "transform",
       }}>
-        {/* Cuadrícula estilo mapa */}
+        {/* Cuadrícula */}
         <div className="absolute inset-0 pointer-events-none" style={{
           backgroundImage: "linear-gradient(rgba(0,0,0,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,0.06) 1px,transparent 1px)",
           backgroundSize: "40px 40px",
@@ -132,42 +137,62 @@ function MapCanvas({ zonasLayout, sectoresConZona, mesasFiltradas, filtroSector,
           })}
 
         {/* MESAS */}
-        {mesasFiltradas.map((mesa: any) => (
-          <div key={mesa.id} data-mesa="true"
-            style={{ position:"absolute", left: mesa.posX||0, top: mesa.posY||0, zIndex:10 }}
-            onClick={() => { if (!didMove.current && mesa.estado === "OCUPADA") setMesaParaCobrar(mesa); }}
-          >
-            <div className={`
-              w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center
-              cursor-pointer hover:scale-110 transition-transform relative bg-white
-              ${mesa.solicitaCuenta
-                ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse"
-                : mesa.estado === "OCUPADA"
-                  ? "border-red-400 text-red-600"
-                  : "border-gray-300 text-gray-400 opacity-50"
-              }
-            `}>
-              <div className="absolute -top-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
-              <div className="absolute -bottom-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
-              <div className="absolute -left-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
-              <div className="absolute -right-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
-              {mesa.solicitaCuenta && (
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1 z-20">
-                  <HandCoins size={10}/> PIDE CUENTA
-                </div>
-              )}
-              <span className="font-black text-lg leading-none">{mesa.nombre}</span>
-              {mesa.estado === "OCUPADA" && (
-                <span className="text-xs font-bold mt-1.5 text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
-                  ${mesa.totalActual}
-                </span>
-              )}
+        {mesasFiltradas.map((mesa: any) => {
+          const metodo = mesa.metodoPago ? METODO_CONFIG[mesa.metodoPago] : null;
+          return (
+            <div key={mesa.id} data-mesa="true"
+              style={{ position:"absolute", left: mesa.posX||0, top: mesa.posY||0, zIndex:10 }}
+              onClick={() => { if (!didMove.current && mesa.estado === "OCUPADA") setMesaParaCobrar(mesa); }}
+            >
+              <div className={`
+                w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center
+                cursor-pointer hover:scale-110 transition-transform relative bg-white
+                ${mesa.solicitaCuenta
+                  ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse"
+                  : mesa.estado === "OCUPADA"
+                    ? "border-red-400 text-red-600"
+                    : "border-gray-300 text-gray-400 opacity-50"
+                }
+              `}>
+                <div className="absolute -top-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
+                <div className="absolute -bottom-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
+                <div className="absolute -left-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
+                <div className="absolute -right-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
+
+                {/* Badge pide cuenta */}
+                {mesa.solicitaCuenta && (
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-20 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1">
+                    <HandCoins size={10}/> PIDE CUENTA
+                  </div>
+                )}
+
+                <span className="font-black text-lg leading-none">{mesa.nombre}</span>
+
+                {mesa.estado === "OCUPADA" && (
+                  <span className="text-xs font-bold mt-1.5 text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
+                    ${mesa.totalActual}
+                  </span>
+                )}
+
+                {/* Método de pago — pill debajo de la mesa */}
+                {metodo && mesa.solicitaCuenta && (
+                  <div className={`
+                    absolute -bottom-6 left-1/2 -translate-x-1/2 z-20
+                    text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm text-white
+                    ${mesa.metodoPago === "QR"       ? "bg-blue-500"   : ""}
+                    ${mesa.metodoPago === "TARJETA"  ? "bg-purple-500" : ""}
+                    ${mesa.metodoPago === "EFECTIVO" ? "bg-green-600"  : ""}
+                  `}>
+                    {metodo.emoji} {metodo.labelCorto}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Hint de navegación */}
+      {/* Hint navegación */}
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5">
         <Move size={11}/> Arrastrá para moverte
       </div>
@@ -249,17 +274,13 @@ export default function AdminDashboard() {
       {/* ── MAPA FULL-SCREEN OVERLAY ─────────────────────────────────────────── */}
       {vistaMapa && (
         <div className="fixed inset-0 z-50 bg-[#e8ecf0]">
-
-          {/* Barra flotante superior */}
           <div className="absolute top-4 left-4 right-4 z-50 flex items-center gap-3">
 
-            {/* Logo / título */}
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shrink-0">
               <Store className="text-red-600" size={18}/>
               <span className="font-black text-gray-800 text-sm hidden sm:block">Control de Salón</span>
             </div>
 
-            {/* Filtro sector */}
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-3 py-2 flex items-center gap-2">
               <Filter size={14} className="text-gray-400 shrink-0"/>
               <select
@@ -272,7 +293,6 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* Contador */}
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-3 py-2.5 hidden sm:flex items-center gap-1.5">
               <span className="text-xs font-black text-gray-700">{mesasFiltradas.length}</span>
               <span className="text-xs text-gray-400 font-medium">mesas</span>
@@ -287,7 +307,6 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Refresh */}
             <button
               onClick={() => mutate()}
               className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50/80 transition-all active:scale-95"
@@ -295,17 +314,14 @@ export default function AdminDashboard() {
               <RefreshCcw size={18} className={cargando ? "animate-spin" : ""}/>
             </button>
 
-            {/* Spacer */}
             <div className="flex-1"/>
 
-            {/* Ir al editor */}
             <Link href="/admin/mesas/mapa">
               <button className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50/80 transition-all active:scale-95" title="Editar mapa">
                 <PenTool size={18}/>
               </button>
             </Link>
 
-            {/* Cerrar mapa */}
             <button
               onClick={() => setVistaMapa(false)}
               className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-gray-700 font-bold text-sm hover:bg-red-50/80 hover:text-red-600 hover:border-red-200 transition-all active:scale-95"
@@ -316,7 +332,6 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          {/* Canvas ocupa toda la pantalla */}
           <MapCanvas
             zonasLayout={zonasLayout}
             sectoresConZona={sectoresConZona}
@@ -373,95 +388,169 @@ export default function AdminDashboard() {
 
         {/* GRID DE MESAS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
-          {mesasFiltradas.map((mesa: any) => (
-            <div key={mesa.id} className={`
-              relative p-5 rounded-2xl border transition-all duration-300
-              ${mesa.solicitaCuenta
-                ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
-                : mesa.estado === "OCUPADA"
-                  ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                  : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
-              }
-            `}>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
+          {mesasFiltradas.map((mesa: any) => {
+            const metodo = mesa.metodoPago ? METODO_CONFIG[mesa.metodoPago] : null;
+            return (
+              <div key={mesa.id} className={`
+                relative p-5 rounded-2xl border transition-all duration-300
+                ${mesa.solicitaCuenta
+                  ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
+                  : mesa.estado === "OCUPADA"
+                    ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                    : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+                }
+              `}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
+                  </div>
+                  <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide
+                    ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
+                    {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
+                  </span>
                 </div>
-                <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide
-                  ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
-                  {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
-                </span>
-              </div>
-              {mesa.solicitaCuenta && (
-                <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
-                  <HandCoins size={18}/> ¡PIDE CUENTA!
-                </div>
-              )}
-              {mesa.estado === "OCUPADA" ? (
-                <>
-                  <div className="space-y-3 mb-6">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <Clock size={14} className="text-gray-400"/>
-                      <span>{new Date(mesa.horaInicio).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
-                    </div>
-                    <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
-                      <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
-                      <div className="flex items-center text-gray-900">
-                        <DollarSign size={16} className="text-gray-400" strokeWidth={3}/>
-                        <span className="text-2xl font-black">{mesa.totalActual}</span>
+
+                {/* Banner pide cuenta */}
+                {mesa.solicitaCuenta && (
+                  <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
+                    <HandCoins size={14}/> ¡PIDE CUENTA!
+                  </div>
+                )}
+
+                {mesa.estado === "OCUPADA" ? (
+                  <>
+                    <div className="space-y-3 mb-6">
+                      {/* Hora + método de pago en la misma fila */}
+                      <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} className="text-gray-400"/>
+                          <span>{new Date(mesa.horaInicio).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
+                        </div>
+                        {metodo && (
+                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wide ${metodo.bg} ${metodo.text}`}>
+                            <span>{metodo.emoji}</span>
+                            {metodo.labelCorto}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
+                        <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
+                        <div className="flex items-center text-gray-900">
+                          <DollarSign size={16} className="text-gray-400" strokeWidth={3}/>
+                          <span className="text-2xl font-black">{mesa.totalActual}</span>
+                        </div>
                       </div>
                     </div>
+
+                    <button onClick={() => setMesaParaCobrar(mesa)}
+                      className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
+                        ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}`}>
+                      COBRAR MESA
+                    </button>
+                  </>
+                ) : (
+                  <div className="h-24 flex flex-col items-center justify-center text-gray-300">
+                    <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
                   </div>
-                  <button onClick={() => setMesaParaCobrar(mesa)}
-                    className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all
-                      ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}`}>
-                    COBRAR MESA
-                  </button>
-                </>
-              ) : (
-                <div className="h-24 flex flex-col items-center justify-center text-gray-300">
-                  <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* MODAL COBRO */}
-      {mesaParaCobrar && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-red-600 p-6 text-white text-center relative">
-              <button onClick={() => setMesaParaCobrar(null)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full active:scale-95">
-                <X size={20}/>
-              </button>
-              <h3 className="text-2xl font-black uppercase tracking-tight">Mesa {mesaParaCobrar.nombre}</h3>
-              <p className="text-red-100 text-sm font-medium">Seleccioná una acción</p>
-            </div>
-            <div className="p-8 space-y-6">
-              <div className="text-center">
-                <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Total a cobrar</span>
-                <div className="text-5xl font-black text-gray-900 mt-2">${mesaParaCobrar.totalActual}</div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => imprimirTicketCierre(mesaParaCobrar)} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group active:scale-95">
-                  <Printer size={32} className="text-gray-400 group-hover:text-gray-600"/>
-                  <span className="font-bold text-gray-600 text-sm">Imprimir Ticket</span>
+      {/* ── MODAL COBRO ──────────────────────────────────────────────────────── */}
+      {mesaParaCobrar && (() => {
+        const metodo = mesaParaCobrar.metodoPago ? METODO_CONFIG[mesaParaCobrar.metodoPago] : null;
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+
+              {/* Header */}
+              <div className="bg-red-600 p-6 text-white text-center relative">
+                <button
+                  onClick={() => setMesaParaCobrar(null)}
+                  className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full active:scale-95"
+                >
+                  <X size={20}/>
                 </button>
-                <button onClick={ejecutarCierre} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group active:scale-95">
-                  <CheckCircle2 size={32} className="text-green-600 group-hover:scale-110 transition-transform"/>
-                  <span className="font-bold text-green-700 text-sm">Cerrar y Liberar</span>
-                </button>
+                <h3 className="text-2xl font-black uppercase tracking-tight">Mesa {mesaParaCobrar.nombre}</h3>
+                <p className="text-red-100 text-sm font-medium mt-1">{mesaParaCobrar.sector || ""}</p>
               </div>
-            </div>
-            <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium">
-              Al cerrar, la mesa quedará disponible para nuevos clientes.
+
+              <div className="p-6 space-y-5">
+
+                {/* Total */}
+                <div className="text-center">
+                  <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Total a cobrar</span>
+                  <div className="text-5xl font-black text-gray-900 mt-1">${mesaParaCobrar.totalActual}</div>
+                </div>
+
+                {/* Método de pago */}
+                {metodo ? (
+                  <div className={`flex items-center gap-3 py-3 px-4 rounded-2xl border-2 font-black text-sm ${metodo.bg} ${metodo.border} ${metodo.text}`}>
+                    <span className="text-2xl">{metodo.emoji}</span>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-0.5">Método elegido</p>
+                      {metodo.label}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 text-sm font-bold">
+                    <HandCoins size={16}/> Método de pago no seleccionado aún
+                  </div>
+                )}
+
+                {/* Detalle de items */}
+                {mesaParaCobrar.detalles?.length > 0 && (
+                  <div className="bg-gray-50 rounded-2xl p-4 max-h-40 overflow-y-auto space-y-2">
+                    {mesaParaCobrar.detalles.map((d: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600 font-medium">
+                          <span className="font-black text-gray-800">{d.cantidad}x</span> {d.producto}
+                        </span>
+                        <span className="font-bold text-gray-800">${d.subtotal}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Acciones */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => imprimirTicketCierre(mesaParaCobrar)}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group active:scale-95"
+                  >
+                    <Printer size={28} className="text-gray-400 group-hover:text-gray-600"/>
+                    <span className="font-bold text-gray-600 text-xs">Imprimir Ticket</span>
+                  </button>
+
+                  {mesaParaCobrar.metodoPago === "QR" ? (
+                    <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-blue-50 border-2 border-blue-100 text-blue-600">
+                      <CheckCircle2 size={28}/>
+                      <span className="font-bold text-xs text-center leading-tight">Se cierra al confirmar el pago</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={ejecutarCierre}
+                      className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group active:scale-95"
+                    >
+                      <CheckCircle2 size={28} className="text-green-600 group-hover:scale-110 transition-transform"/>
+                      <span className="font-bold text-green-700 text-xs">Cerrar y Liberar</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium border-t border-gray-100">
+                Al cerrar, la mesa quedará disponible para nuevos clientes.
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }

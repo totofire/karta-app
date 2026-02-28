@@ -34,22 +34,33 @@ enum Plan {
   ENTERPRISE  // Plan full
 }
 
+// --------------------------------------
+// 2. LOCAL Y USUARIOS
+// --------------------------------------
+
 model Local {
   id            Int          @id @default(autoincrement())
   nombre        String
   direccion     String?
   slug          String?      @unique // Ej: "bar-de-tito"
-  
+
   estado        EstadoLocal  @default(DEMO)
   notasAdmin    String?      // Notas internas tuyas sobre el local
-  
+
   // ── Plan y facturación ──────────────────────────────────────────
   plan          Plan         @default(DEMO)
   montoPlan     Float        @default(0)   // Lo que paga por mes (0 en demo)
   trialHasta    DateTime?                  // Fecha en que vence el período demo
   fechaVence    DateTime?                  // Vencimiento del período pago actual
-  
+
   fechaAlta     DateTime     @default(now())
+
+  // ── Mercado Pago OAuth ──────────────────────────────────────────
+  mpAccessToken  String?     // Access token de la cuenta MP del local
+  mpRefreshToken String?     // Para renovar el access token
+  mpUserId       String?     // ID de usuario en MP
+  mpEmail        String?     // Email de la cuenta MP conectada
+  mpConectadoEn  DateTime?   // Fecha en que se conectó MP
 
   usuarios      Usuario[]
   mesas         Mesa[]
@@ -66,24 +77,24 @@ model Usuario {
   nombre    String
   email     String   @unique
   password  String?  // Nullable: el admin no tiene password hasta que activa su cuenta
-  
+
   rol       Rol      @default(ADMIN)
   activo    Boolean  @default(false) // Empieza inactivo hasta que activa con el invite
-  
+
   // ── Invite flow ─────────────────────────────────────────────────
   inviteToken   String?   @unique  // Token que se manda por mail para activar cuenta
   inviteExpira  DateTime?          // El token expira a las 48hs de creado
-  
+
   localId   Int?
   local     Local?   @relation(fields: [localId], references: [id])
-  
+
   fechaAlta DateTime @default(now())
 
   @@index([localId])
 }
 
 // --------------------------------------
-// 2. CONFIGURACIÓN E INFRAESTRUCTURA
+// 3. CONFIGURACIÓN E INFRAESTRUCTURA
 // --------------------------------------
 
 model Configuracion {
@@ -91,11 +102,10 @@ model Configuracion {
   horaApertura String  @default("08:00")
   horaCierre   String  @default("00:00")
   cajaAbierta  Boolean @default(true)
-  
+
   localId      Int     @unique
   local        Local   @relation(fields: [localId], references: [id])
-  mapaZonas Json?
-
+  mapaZonas    Json?
 }
 
 model Sector {
@@ -106,30 +116,30 @@ model Sector {
   localId Int
   local   Local  @relation(fields: [localId], references: [id])
 
-  @@unique([localId, nombre]) 
+  @@unique([localId, nombre])
 }
 
 model Mesa {
   id       Int     @id @default(autoincrement())
   nombre   String
-  numero   Int     @default(0)   // ← NUEVO: número correlativo auto-asignado
+  numero   Int     @default(0)
   qr_token String  @unique @default(cuid())
   activo   Boolean @default(true)
-  sector   String  @default("General") 
-  
+  sector   String  @default("General")
+
   posX     Int     @default(0)
   posY     Int     @default(0)
-  
+
   localId  Int
   local    Local   @relation(fields: [localId], references: [id])
-  
+
   sesiones Sesion[]
 
   @@index([localId, activo])
 }
 
 // --------------------------------------
-// 3. MENÚ (PRODUCTOS Y CATEGORÍAS)
+// 4. MENÚ (PRODUCTOS Y CATEGORÍAS)
 // --------------------------------------
 
 model Categoria {
@@ -137,12 +147,12 @@ model Categoria {
   nombre         String
   orden          Int        @default(0)
   imprimirCocina Boolean    @default(true)
-  
+
   localId        Int
   local          Local      @relation(fields: [localId], references: [id])
-  
+
   productos      Producto[]
-  
+
   @@index([localId, orden])
 }
 
@@ -154,28 +164,28 @@ model Producto {
   imagen      String?
   activo      Boolean @default(true)
   orden       Int     @default(0)
-  
+
   categoriaId Int
   categoria   Categoria @relation(fields: [categoriaId], references: [id])
-  
+
   localId     Int
   local       Local     @relation(fields: [localId], references: [id])
-  
+
   items       ItemPedido[]
 
   @@index([localId, categoriaId, activo])
 }
 
 // --------------------------------------
-// 4. OPERATIVA (PEDIDOS Y SESIONES)
+// 5. OPERATIVA (PEDIDOS Y SESIONES)
 // --------------------------------------
 
 model Sesion {
   id             Int       @id @default(autoincrement())
-  
+
   mesaId         Int
   mesa           Mesa      @relation(fields: [mesaId], references: [id])
-  
+
   localId        Int
   local          Local     @relation(fields: [localId], references: [id])
 
@@ -188,18 +198,24 @@ model Sesion {
   expiraEn       DateTime?
   solicitaCuenta DateTime?
 
+  // ── Pago ────────────────────────────────────────────────────────
+  metodoPago     String?   // "QR" | "TARJETA" | "EFECTIVO"
+  mpPreferenceId String?   // ID de la preferencia de pago en MP
+  mpPaymentId    String?   // ID del pago confirmado en MP
+  pagadoEn       DateTime? // Timestamp de confirmación del pago
+
   pedidos        Pedido[]
 
-  @@index([localId, fechaFin]) 
+  @@index([localId, fechaFin])
   @@index([mesaId, fechaFin])
 }
 
 model Pedido {
   id            Int          @id @default(autoincrement())
-  
+
   sesionId      Int
   sesion        Sesion       @relation(fields: [sesionId], references: [id])
-  
+
   localId       Int
   local         Local        @relation(fields: [localId], references: [id])
 
@@ -207,8 +223,7 @@ model Pedido {
   estado        String       @default("PENDIENTE") // PENDIENTE, EN_PREPARACION, ENTREGADO, CANCELADO
   fecha         DateTime     @default(now())
   impreso       Boolean      @default(false)
-  
-  // Permite calcular el tiempo real de espera del cliente (fecha → fechaDespacho).
+
   fechaDespacho DateTime?
 
   items         ItemPedido[]
@@ -226,7 +241,7 @@ model ItemPedido {
 
   pedidoId      Int
   pedido        Pedido   @relation(fields: [pedidoId], references: [id])
-  
+
   productoId    Int
   producto      Producto @relation(fields: [productoId], references: [id])
 }

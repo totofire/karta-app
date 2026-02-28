@@ -29,7 +29,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [modalProducto, setModalProducto] = useState<any>(null);
   const [cantidadModal, setCantidadModal] = useState(1);
   const [observacionesModal, setObservacionesModal] = useState("");
-
+  const [metodoPagoSeleccionado, setMetodoPagoSeleccionado] = useState<"QR" | "TARJETA" | "EFECTIVO" | null>(null);
   // --- LÓGICA DE AGRUPACIÓN DE CUENTA ---
   const { itemsHistoricos, totalHistorico } = useMemo(() => {
     const mapa = new Map();
@@ -68,26 +68,33 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
   // --- SOLICITAR CUENTA ---
   const pedirCuenta = async () => {
-    setPidiendoCuenta(true);
-    try {
-      const res = await fetch("/api/pedidos/cuenta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokenEfimero }),
-      });
+  if (!metodoPagoSeleccionado) return;
+  setPidiendoCuenta(true);
+  try {
+    const res = await fetch("/api/pedidos/cuenta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado }),
+    });
 
-      if (res.ok) {
-        toast.success("¡Listo! El mozo te trae la cuenta 💸");
-        setVerCuenta(false);
-      } else {
-        toast.error("Error al solicitar cuenta");
-      }
-    } catch (e) {
-      toast.error("Error de conexión");
-    } finally {
-      setPidiendoCuenta(false);
+    if (res.ok) {
+      const mensajes = {
+        QR:       "¡Listo! Enseguida te enviamos el QR para pagar 📱",
+        TARJETA:  "¡Listo! El mozo ya sabe que pagás con tarjeta 💳",
+        EFECTIVO: "¡Listo! El mozo se acerca a cobrarte 💵",
+      };
+      toast.success(mensajes[metodoPagoSeleccionado]);
+      setVerCuenta(false);
+      setMetodoPagoSeleccionado(null);
+    } else {
+      toast.error("Error al solicitar cuenta");
     }
-  };
+  } catch {
+    toast.error("Error de conexión");
+  } finally {
+    setPidiendoCuenta(false);
+  }
+};
 
   // --- SCROLL A CATEGORÍA ---
   const scrollearACategoria = (catId: number) => {
@@ -569,102 +576,113 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
       )}
 
       {/* --- MODAL MI CUENTA --- */}
-      {verCuenta && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10">
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none"></div>
-              <div className="relative z-10">
-                <h3 className="font-black text-xl flex items-center gap-2">
-                  <Receipt size={22} className="text-yellow-400" />
-                  Tu Consumo
-                </h3>
-                <p className="text-slate-400 text-xs mt-1 font-medium">Mesa {mesa.nombre} • Resumen parcial</p>
-              </div>
-              <button 
-                onClick={() => setVerCuenta(false)}
-                className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors relative z-10"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-5 max-h-[50vh] overflow-y-auto">
-              {itemsHistoricos.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">
-                  <p>Aún no has pedido nada.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {itemsHistoricos.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-start border-b border-dashed border-gray-200 pb-3 last:border-0 last:pb-0">
-                      <div className="flex gap-3">
-                        <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs">
-                          {item.cantidad}
-                        </span>
-                        <div>
-                          <p className="font-bold text-gray-800 text-sm leading-tight">{item.nombre}</p>
-                          <div className="flex items-center gap-1 mt-1">
-                            <CheckCircle2 size={10} className="text-green-500" />
-                            <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide">En marcha</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="block font-bold text-gray-900 text-sm">
-                          ${item.subtotal}
-                        </span>
-                        <span className="text-[10px] text-gray-400">
-                          (${item.precio} c/u)
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-gray-50 p-6 border-t border-gray-200">
-              <div className="flex justify-between items-baseline mb-2">
-                <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Total Acumulado</span>
-                <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-xl mb-4">
-                <p className="text-center text-[11px] text-yellow-800 font-medium leading-tight">
-                  Este total <b>NO incluye</b> lo que estás seleccionando ahora en el carrito.
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <button 
-                  onClick={() => setVerCuenta(false)}
-                  className="bg-slate-200 text-slate-800 font-bold py-3.5 rounded-xl active:scale-95 transition-transform hover:bg-slate-300"
-                >
-                  Seguir Pidiendo
-                </button>
-                
-                <button 
-                  onClick={pedirCuenta}
-                  disabled={pidiendoCuenta}
-                  className={`
-                    font-bold py-3.5 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2
-                    ${pidiendoCuenta 
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed" 
-                      : "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"}
-                  `}
-                >
-                  {pidiendoCuenta ? "..." : (
-                    <>
-                      <Receipt size={18} />
-                      PEDIR CUENTA
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+{verCuenta && (
+  <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+    <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10">
+      
+      {/* Header */}
+      <div className="bg-slate-900 text-white p-5 flex justify-between items-center relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none" />
+        <div className="relative z-10">
+          <h3 className="font-black text-xl flex items-center gap-2">
+            <Receipt size={22} className="text-yellow-400" />
+            Tu Consumo
+          </h3>
+          <p className="text-slate-400 text-xs mt-1 font-medium">
+            Mesa {mesa.nombre} · Resumen parcial
+          </p>
         </div>
-      )}
+        <button onClick={() => setVerCuenta(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors relative z-10">
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Items consumidos */}
+      <div className="p-5 max-h-[35vh] overflow-y-auto">
+        {itemsHistoricos.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <p>Aún no has pedido nada.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {itemsHistoricos.map((item: any, idx: number) => (
+              <div key={idx} className="flex justify-between items-center border-b border-dashed border-gray-100 pb-3 last:border-0 last:pb-0">
+                <div className="flex gap-3 items-center">
+                  <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs shrink-0">
+                    {item.cantidad}
+                  </span>
+                  <p className="font-semibold text-gray-800 text-sm">{item.nombre}</p>
+                </div>
+                <span className="font-bold text-gray-900 text-sm">${item.subtotal}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Total */}
+      <div className="px-5 py-3 border-t border-gray-100 flex justify-between items-baseline">
+        <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Total</span>
+        <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
+      </div>
+
+      {/* Selección de método de pago */}
+      <div className="px-5 pb-5">
+        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">
+          ¿Cómo vas a pagar?
+        </p>
+
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {[
+            { key: "QR",      emoji: "📱", label: "QR / Digital" },
+            { key: "TARJETA", emoji: "💳", label: "Tarjeta"      },
+            { key: "EFECTIVO",emoji: "💵", label: "Efectivo"     },
+          ].map((metodo) => (
+            <button
+              key={metodo.key}
+              onClick={() => setMetodoPagoSeleccionado(metodo.key as any)}
+              className={`
+                flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all active:scale-95 font-bold text-xs
+                ${metodoPagoSeleccionado === metodo.key
+                  ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                  : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
+                }
+              `}
+            >
+              <span className="text-2xl">{metodo.emoji}</span>
+              {metodo.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={pedirCuenta}
+          disabled={pidiendoCuenta || !metodoPagoSeleccionado}
+          className={`
+            w-full font-bold py-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-base
+            ${!metodoPagoSeleccionado
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : pidiendoCuenta
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                : "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
+            }
+          `}
+        >
+          {pidiendoCuenta
+            ? <Loader2 size={18} className="animate-spin" />
+            : <><Receipt size={18} /> SOLICITAR CUENTA</>
+          }
+        </button>
+
+        {!metodoPagoSeleccionado && (
+          <p className="text-center text-xs text-gray-400 mt-2">
+            Seleccioná un método para continuar
+          </p>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
     </div>
   );

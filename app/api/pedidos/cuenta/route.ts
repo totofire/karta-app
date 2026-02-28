@@ -1,24 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const METODOS_VALIDOS = ["QR", "TARJETA", "EFECTIVO"] as const;
+type MetodoPago = typeof METODOS_VALIDOS[number];
+
 export async function POST(req: Request) {
   try {
-    const { tokenEfimero } = await req.json();
+    const { tokenEfimero, metodoPago } = await req.json();
 
     if (!tokenEfimero) {
       return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
     }
 
-    // Actualizamos la sesión
-    // No hace falta validar localId aquí porque el tokenEfimero es único globalmente
-    // y solo afecta a esa sesión específica.
+    if (!METODOS_VALIDOS.includes(metodoPago)) {
+      return NextResponse.json({ error: "Método de pago inválido" }, { status: 400 });
+    }
+
     await prisma.sesion.update({
       where: { tokenEfimero },
-      data: { solicitaCuenta: new Date() }
+      data: {
+        solicitaCuenta: new Date(),
+        metodoPago,
+      },
     });
 
     return NextResponse.json({ success: true });
-
   } catch (error) {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
