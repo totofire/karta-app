@@ -67,28 +67,52 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   }, [pedidosHistoricos]);
 
   // --- SOLICITAR CUENTA ---
-  const pedirCuenta = async () => {
+ const pedirCuenta = async () => {
   if (!metodoPagoSeleccionado) return;
   setPidiendoCuenta(true);
   try {
+    // 1. Registrar solicitud de cuenta
     const res = await fetch("/api/pedidos/cuenta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado }),
     });
 
-    if (res.ok) {
-      const mensajes = {
-        QR:       "¡Listo! Enseguida te enviamos el QR para pagar 📱",
-        TARJETA:  "¡Listo! El mozo ya sabe que pagás con tarjeta 💳",
-        EFECTIVO: "¡Listo! El mozo se acerca a cobrarte 💵",
-      };
-      toast.success(mensajes[metodoPagoSeleccionado]);
+    if (!res.ok) { toast.error("Error al solicitar cuenta"); return; }
+
+    // 2. Si eligió QR → generar preferencia MP y redirigir
+    if (metodoPagoSeleccionado === "QR") {
+      toast.loading("Generando link de pago...");
+      const mpRes = await fetch("/api/mp/pagar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenEfimero }),
+      });
+
+      if (!mpRes.ok) {
+        const err = await mpRes.json();
+        toast.dismiss();
+        toast.error(err.error || "Error al generar el pago");
+        return;
+      }
+
+      const { checkoutUrl } = await mpRes.json();
+      toast.dismiss();
       setVerCuenta(false);
-      setMetodoPagoSeleccionado(null);
-    } else {
-      toast.error("Error al solicitar cuenta");
+      // Redirigir a Mercado Pago
+      window.location.href = checkoutUrl;
+      return;
     }
+
+    // 3. Otros métodos → toast normal
+    const mensajes = {
+      TARJETA:  "¡Listo! El mozo ya sabe que pagás con tarjeta 💳",
+      EFECTIVO: "¡Listo! El mozo se acerca a cobrarte 💵",
+    };
+    toast.success(mensajes[metodoPagoSeleccionado as "TARJETA" | "EFECTIVO"]);
+    setVerCuenta(false);
+    setMetodoPagoSeleccionado(null);
+
   } catch {
     toast.error("Error de conexión");
   } finally {
