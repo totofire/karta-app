@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import { 
@@ -11,10 +11,7 @@ import {
   XCircle
 } from "lucide-react";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+
 
 // --- COMPONENTES AUXILIARES ---
 const Reloj = ({ fecha }: { fecha: string }) => {

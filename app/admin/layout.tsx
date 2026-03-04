@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Toaster } from "react-hot-toast";
 import NotificationsManager from "@/components/NotificationsManager";
 import useSWR from "swr";
-import { createClient } from "@supabase/supabase-js"; // <-- Importamos Supabase
+import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
   ChefHat,
@@ -22,11 +22,7 @@ import {
   BarChart2,
 } from "lucide-react";
 
-// Inicializamos Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+
 
 // Fetcher seguro para SWR
 const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);

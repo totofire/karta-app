@@ -67,11 +67,10 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   }, [pedidosHistoricos]);
 
   // --- SOLICITAR CUENTA ---
- const pedirCuenta = async () => {
+const pedirCuenta = async () => {
   if (!metodoPagoSeleccionado) return;
   setPidiendoCuenta(true);
   try {
-    // 1. Registrar solicitud de cuenta
     const res = await fetch("/api/pedidos/cuenta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,7 +79,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
     if (!res.ok) { toast.error("Error al solicitar cuenta"); return; }
 
-    // 2. Si eligió QR → generar preferencia MP y redirigir
     if (metodoPagoSeleccionado === "QR") {
       toast.loading("Generando link de pago...");
       const mpRes = await fetch("/api/mp/pagar", {
@@ -88,28 +86,31 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenEfimero }),
       });
+      toast.dismiss();
 
-      if (!mpRes.ok) {
-        const err = await mpRes.json();
-        toast.dismiss();
+      if (mpRes.ok) {
+        const { checkoutUrl } = await mpRes.json();
+        setVerCuenta(false);
+        window.location.href = checkoutUrl;
+        return;
+      }
+
+      // MP no configurado → el admin lo cierra manualmente
+      const err = await mpRes.json();
+      if (!err.error?.includes("no tiene Mercado Pago")) {
         toast.error(err.error || "Error al generar el pago");
         return;
       }
 
-      const { checkoutUrl } = await mpRes.json();
-      toast.dismiss();
-      setVerCuenta(false);
-      // Redirigir a Mercado Pago
-      window.location.href = checkoutUrl;
-      return;
+      toast.success("¡Listo! El encargado se acerca a cobrarte 📱");
+    } else {
+      const mensajes = {
+        TARJETA:  "¡Listo! El encargado ya sabe que pagás con tarjeta 💳",
+        EFECTIVO: "¡Listo! El encargado se acerca a cobrarte 💵",
+      };
+      toast.success(mensajes[metodoPagoSeleccionado as "TARJETA" | "EFECTIVO"]);
     }
 
-    // 3. Otros métodos → toast normal
-    const mensajes = {
-      TARJETA:  "¡Listo! El mozo ya sabe que pagás con tarjeta 💳",
-      EFECTIVO: "¡Listo! El mozo se acerca a cobrarte 💵",
-    };
-    toast.success(mensajes[metodoPagoSeleccionado as "TARJETA" | "EFECTIVO"]);
     setVerCuenta(false);
     setMetodoPagoSeleccionado(null);
 

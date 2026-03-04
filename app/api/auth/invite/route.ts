@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/auth/invite?token=xxx
@@ -81,11 +83,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "El link expiró" }, { status: 410 });
     }
 
-    // Activar cuenta: guardar contraseña, poner activo, limpiar token
+    const passwordHash = await bcrypt.hash(password, 10);
+
     await prisma.usuario.update({
       where: { id: usuario.id },
       data: {
-        password:     password,  // Mismo patrón que el resto del sistema
+        password:     passwordHash,
         activo:       true,
         inviteToken:  null,
         inviteExpira: null,

@@ -1,14 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle } from "lucide-react";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+
 
 const Reloj = ({ fecha }: { fecha: string }) => {
   const [hora, setHora] = useState<string>("");

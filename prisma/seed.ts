@@ -5,6 +5,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import { subDays, addMinutes } from "date-fns";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient({ log: [] });
 const random = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
@@ -128,6 +129,10 @@ async function abrirMesa(mesa: any, localId: number, productos: any[]) {
 async function main() {
   console.log("🌱 KARTA SUPER SEED iniciando...\n");
 
+  // Hash generado una sola vez y reutilizado en todos los usuarios de dev
+  console.log("🔑 Hasheando contraseñas...");
+  const hash = await bcrypt.hash("123", 10);
+
   console.log("🧹 Limpiando base de datos...");
   await prisma.itemPedido.deleteMany();
   await prisma.pedido.deleteMany();
@@ -142,7 +147,7 @@ async function main() {
 
   console.log("👑 Creando Super Admin...");
   await prisma.usuario.create({
-    data: { email: "tomi@karta.app", password: "123", nombre: "Tomas (Super Admin)", rol: "SUPER_ADMIN", activo: true },
+    data: { email: "tomi@karta.app", password: hash, nombre: "Tomas (Super Admin)", rol: "SUPER_ADMIN", activo: true },
   });
 
   // ── LOCAL 1: KARTA BAR — PRO ──────────────────────────────────────────────
@@ -152,9 +157,9 @@ async function main() {
   });
   await prisma.configuracion.create({ data: { localId: local1.id } });
   await prisma.usuario.createMany({ data: [
-    { email: "admin@karta.com",  password: "123", nombre: "Dueño Karta Bar", rol: "ADMIN", activo: true, localId: local1.id },
-    { email: "mozo1@karta.com",  password: "123", nombre: "Juan (Mozo)",     rol: "MOZO",  activo: true, localId: local1.id },
-    { email: "mozo2@karta.com",  password: "123", nombre: "Paula (Moza)",    rol: "MOZO",  activo: true, localId: local1.id },
+    { email: "admin@karta.com",  password: hash, nombre: "Dueño Karta Bar", rol: "ADMIN", activo: true, localId: local1.id },
+    { email: "mozo1@karta.com",  password: hash, nombre: "Juan (Mozo)",     rol: "MOZO",  activo: true, localId: local1.id },
+    { email: "mozo2@karta.com",  password: hash, nombre: "Paula (Moza)",    rol: "MOZO",  activo: true, localId: local1.id },
   ]});
   await prisma.sector.createMany({ data: [
     { nombre: "Patio",   orden: 1, localId: local1.id },
@@ -198,8 +203,8 @@ async function main() {
   });
   await prisma.configuracion.create({ data: { localId: local2.id } });
   await prisma.usuario.createMany({ data: [
-    { email: "admin@lacantina.com", password: "123", nombre: "Roberto (Dueño)", rol: "ADMIN", activo: true, localId: local2.id },
-    { email: "mozo@lacantina.com",  password: "123", nombre: "Sergio (Mozo)",   rol: "MOZO",  activo: true, localId: local2.id },
+    { email: "admin@lacantina.com", password: hash, nombre: "Roberto (Dueño)", rol: "ADMIN", activo: true, localId: local2.id },
+    { email: "mozo@lacantina.com",  password: hash, nombre: "Sergio (Mozo)",   rol: "MOZO",  activo: true, localId: local2.id },
   ]});
   await prisma.sector.createMany({ data: [
     { nombre: "Salón principal", orden: 1, localId: local2.id },
@@ -234,9 +239,9 @@ async function main() {
   });
   await prisma.configuracion.create({ data: { localId: local3.id } });
   await prisma.usuario.createMany({ data: [
-    { email: "admin@rooftop.com",  password: "123", nombre: "Valentina (Dueña)", rol: "ADMIN", activo: true, localId: local3.id },
-    { email: "mozo1@rooftop.com",  password: "123", nombre: "Lucía (Moza)",      rol: "MOZO",  activo: true, localId: local3.id },
-    { email: "mozo2@rooftop.com",  password: "123", nombre: "Marcos (Mozo)",     rol: "MOZO",  activo: true, localId: local3.id },
+    { email: "admin@rooftop.com",  password: hash, nombre: "Valentina (Dueña)", rol: "ADMIN", activo: true, localId: local3.id },
+    { email: "mozo1@rooftop.com",  password: hash, nombre: "Lucía (Moza)",      rol: "MOZO",  activo: true, localId: local3.id },
+    { email: "mozo2@rooftop.com",  password: hash, nombre: "Marcos (Mozo)",     rol: "MOZO",  activo: true, localId: local3.id },
   ]});
   await prisma.sector.createMany({ data: [
     { nombre: "Deck principal", orden: 1, localId: local3.id },
@@ -295,7 +300,7 @@ async function main() {
   });
   await prisma.configuracion.create({ data: { localId: local5.id } });
   await prisma.usuario.create({
-    data: { email: "admin@sushineko.com", password: "123", nombre: "Fernanda (Sushi Neko)", rol: "ADMIN", activo: false, localId: local5.id },
+    data: { email: "admin@sushineko.com", password: hash, nombre: "Fernanda (Sushi Neko)", rol: "ADMIN", activo: false, localId: local5.id },
   });
   const mesas5 = await Promise.all(
     ["Barra 1","Barra 2","Mesa A","Mesa B","Mesa C"].map((nombre, i) =>
