@@ -5,16 +5,36 @@ import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import MenuInterface from "./MenuInterface";
 import ClienteListener from "@/components/ClienteListener";
-import { Store, ScanLine } from "lucide-react";
+import { Store, ScanLine, CheckCircle2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams?: Promise<{ pago?: string }>;
 }) {
   const { token } = await params;
+  const sp = searchParams ? await searchParams : {};
+
+  // ── 0. Retorno de Mercado Pago ───────────────────────────────────────────
+  if (sp?.pago === "ok") {
+    await prisma.sesion.updateMany({
+      where: { tokenEfimero: token, fechaFin: null },
+      data:  { fechaFin: new Date() },
+    });
+    // Redirigir sin el query param — la sesión ya tiene fechaFin → mostrará pantalla de gracias
+    redirect(`/mesa/${token}`);
+  }
+
+  if (sp?.pago === "error") {
+    // No cerramos la sesión — el cliente puede reintentar
+    // Caemos al flujo normal y MenuInterface puede mostrar un banner de error
+  }
+
+  // ── Auth mozo ────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
   const userToken = cookieStore.get("token")?.value;
 
@@ -62,7 +82,7 @@ export default async function Page({
     );
   }
 
-  // Sesión vigente → mostrar menú directamente
+  // Sesión vigente → mostrar menú
   if (sesionActiva && !sesionActiva.fechaFin) {
     const [categorias, pedidos] = await Promise.all([
       prisma.categoria.findMany({
@@ -91,6 +111,7 @@ export default async function Page({
           tokenEfimero={sesionActiva.tokenEfimero}
           pedidosHistoricos={pedidos}
           esMozo={esMozo}
+          pagoEstado={sp?.pago ?? null}
         />
       </>
     );
@@ -127,12 +148,12 @@ export default async function Page({
 
   if (!sesion) {
     const tokenNuevo = crypto.randomBytes(32).toString("hex");
-    const expiraEn   = new Date(Date.now() + 4 * 60 * 60 * 1000); // 4 horas
+    const expiraEn   = new Date(Date.now() + 4 * 60 * 60 * 1000);
 
     sesion = await prisma.sesion.create({
       data: {
         mesaId:       mesa.id,
-        localId:      mesa.localId,   // ← requerido por el schema multi-tenant
+        localId:      mesa.localId,
         tokenEfimero: tokenNuevo,
         fechaInicio:  new Date(),
         expiraEn,
