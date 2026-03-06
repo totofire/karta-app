@@ -4,11 +4,15 @@ import { useEffect, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { audioManager } from '@/lib/audio';
+import { pedirPermiso } from '@/lib/webNotify';
 
 export default function NotificationsManager() {
   const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {
+    // Pedir permiso de notificaciones nativas del navegador (una sola vez)
+    pedirPermiso();
+
     if (audioManager.unlocked) setUnlocked(true);
 
     const unsub = audioManager.onUnlock(() => setUnlocked(true));
