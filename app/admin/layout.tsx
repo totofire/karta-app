@@ -32,101 +32,148 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // ── SWR ────────────────────────────────────────────────────────────────────
-  const { data: cocina = [], mutate: mutateCocina } = useSWR("/api/cocina",  fetcher, { revalidateOnFocus: true });
-  const { data: barra  = [], mutate: mutateBarra  } = useSWR("/api/barra",   fetcher, { revalidateOnFocus: true });
+  const { data: cocina = [], mutate: mutateCocina } = useSWR("/api/cocina",       fetcher, { revalidateOnFocus: true });
+  const { data: barra  = [], mutate: mutateBarra  } = useSWR("/api/barra",        fetcher, { revalidateOnFocus: true });
   const { data: mesas  = [], mutate: mutateMesas  } = useSWR("/api/admin/estado", fetcher, { revalidateOnFocus: true });
 
   const pendientesCocina = Array.isArray(cocina) ? cocina.length : 0;
   const pendientesBarra  = Array.isArray(barra)  ? barra.length  : 0;
 
-  // ── REFS para notificaciones diff ─────────────────────────────────────────
+  // ── REFS estables ─────────────────────────────────────────────────────────
+  // Permiten acceder a valores actuales desde callbacks de WebSocket
+  // sin recrear el canal cuando cambian.
   const mutateRef           = useRef(mutateMesas);
+  const mutateCocinaRef     = useRef(mutateCocina);
+  const mutateBarraRef      = useRef(mutateBarra);
+  const mesasRef            = useRef<any[]>([]);
   const prevMesasRef        = useRef<any[]>([]);
   const mesasSolicitadasRef = useRef<Set<number>>(new Set());
   const inicializado        = useRef(false);
 
-  useEffect(() => { mutateRef.current = mutateMesas; }, [mutateMesas]);
+  useEffect(() => { mutateRef.current       = mutateMesas;  }, [mutateMesas]);
+  useEffect(() => { mutateCocinaRef.current = mutateCocina; }, [mutateCocina]);
+  useEffect(() => { mutateBarraRef.current  = mutateBarra;  }, [mutateBarra]);
+  useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
 
-  // ── DIFF: detecta cambios en mesas y dispara notificaciones ───────────────
-  // Se ejecuta cada vez que SWR actualiza los datos, sin importar en qué
-  // página del admin esté el usuario.
-  useEffect(() => {
-    if (!Array.isArray(mesas) || mesas.length === 0) return;
+  // ── DIFF: actualiza UI en base a cambios de SWR ───────────────────────────
+  // Se usa SOLO para los toasts in-app (notify.*) cuando la pestaña está activa.
+  // Las notificaciones nativas del OS se disparan desde el WebSocket (abajo),
+  // así llegan aunque Chrome throttlee los fetch en background.
+  // ── DIFF: audio + toasts in-app (requieren contexto React) ───────────────
+useEffect(() => {
+  if (!Array.isArray(mesas) || mesas.length === 0) return;
 
-    // Primer load: guardar snapshot sin notificar
-    if (!inicializado.current) {
-      prevMesasRef.current = mesas;
-      inicializado.current = true;
+  if (!inicializado.current) {
+    prevMesasRef.current = mesas;
+    inicializado.current = true;
+    return;
+  }
+
+  const prev = prevMesasRef.current;
+
+  mesas.forEach((mesa: any) => {
+    const anterior = prev.find((m: any) => m.id === mesa.id);
+
+    if (!anterior && mesa.totalActual > 0) {
+      audioManager.play("ding");          // ← audio aquí, funciona
+      navigator.vibrate?.([200, 100, 200]);
+      notify.pedido("¡Nuevo pedido!", mesa.nombre);
       return;
     }
+    if (!anterior) return;
 
-    const prev = prevMesasRef.current;
+    if (mesa.totalActual > anterior.totalActual) {
+      audioManager.play("ding");          // ← audio aquí, funciona
+      navigator.vibrate?.([200, 100, 200]);
+      notify.pedido("¡Nuevo pedido!", mesa.nombre);
+    }
 
-    mesas.forEach((mesa: any) => {
-      const anterior = prev.find((m: any) => m.id === mesa.id);
-
-      // Mesa nueva con pedidos = nuevo pedido en mesa recién abierta
-      if (!anterior && mesa.totalActual > 0) {
-        audioManager.play("ding");
-        navigator.vibrate?.([200, 100, 200]);
-        notify.pedido("¡Nuevo pedido!", mesa.nombre);
-        notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesa.nombre}`, `pedido-${mesa.id}`);
-        return;
+    if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
+      if (!mesasSolicitadasRef.current.has(mesa.id)) {
+        mesasSolicitadasRef.current.add(mesa.id);
+        setTimeout(() => mesasSolicitadasRef.current.delete(mesa.id), 10_000);
+        audioManager.play("caja");        // ← audio aquí, funciona
+        navigator.vibrate?.([300, 100, 300]);
+        notify.atencion("¡Piden la cuenta!", mesa.nombre);
       }
+    }
+  });
 
-      if (!anterior) return;
+  prevMesasRef.current = mesas;
+}, [mesas]);
 
-      // Total subió = nuevo ítem agregado
-      if (mesa.totalActual > anterior.totalActual) {
-        audioManager.play("ding");
-        navigator.vibrate?.([200, 100, 200]);
-        notify.pedido("¡Nuevo pedido!", mesa.nombre);
-        notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesa.nombre}`, `pedido-${mesa.id}`);
-      }
+  // ── CANAL SUPABASE ────────────────────────────────────────────────────────
+  // El WebSocket NO es throttleado por Chrome en pestañas de fondo.
+  // Por eso las notificaciones nativas del OS se disparan aquí directamente,
+  // sin esperar el fetch de SWR (que sí puede demorarse en background).
+  // ── CANAL SUPABASE ────────────────────────────────────────────────────────
+useEffect(() => {
+  const canal = supabase
+    .channel("realtime-admin-layout")
 
-      // solicitaCuenta pasó de falsy → truthy
-      if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
-        if (!mesasSolicitadasRef.current.has(mesa.id)) {
-          mesasSolicitadasRef.current.add(mesa.id);
-          setTimeout(() => mesasSolicitadasRef.current.delete(mesa.id), 10_000);
-          audioManager.play("caja");
-          navigator.vibrate?.([300, 100, 300]);
-          notify.atencion("¡Piden la cuenta!", mesa.nombre);
-          notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesa.nombre}`, `cuenta-${mesa.id}`);
-        }
-      }
-    });
+    // INSERT Pedido → notificación nativa INMEDIATA (funciona en background)
+    //                 audio/toasts los maneja el diff cuando SWR refresca
+    .on("postgres_changes",
+      { event: "INSERT", schema: "public", table: "Pedido" },
+      () => {
+        notificarNativo("🍽️ Nuevo pedido", "Hay un nuevo pedido esperando", "pedido-nuevo");
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
 
-    prevMesasRef.current = mesas;
-  }, [mesas]);
+    .on("postgres_changes",
+      { event: "UPDATE", schema: "public", table: "Pedido" },
+      () => {
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
 
-  // ── CANAL SUPABASE — único canal para todo el admin ───────────────────────
-  useEffect(() => {
-    const canal = supabase
-      .channel("realtime-admin-layout")
-      .on("postgres_changes", { event: "*",      schema: "public", table: "Pedido" },
-        () => { mutateRef.current(); mutateCocina(); mutateBarra(); })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Sesion" },
-        () => { mutateRef.current(); })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "Sesion" },
-        () => { mutateRef.current(); })
-      .subscribe();
+    .on("postgres_changes",
+      { event: "DELETE", schema: "public", table: "Pedido" },
+      () => {
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
 
-    return () => { supabase.removeChannel(canal); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ← vacío: el canal vive toda la sesión del admin
+    .on("postgres_changes",
+      { event: "UPDATE", schema: "public", table: "Sesion" },
+      (payload) => {
+        mutateRef.current();
 
+        const pideCuenta = !payload.old?.solicitaCuenta && !!payload.new?.solicitaCuenta;
+        if (!pideCuenta) return;
+
+        const mesaId: number = payload.new?.mesaId;
+        if (mesasSolicitadasRef.current.has(mesaId)) return;
+
+        // Solo la notificación nativa desde el WS (audio lo maneja el diff)
+        const mesaNombre = mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
+        notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
+      })
+
+    .on("postgres_changes",
+      { event: "INSERT", schema: "public", table: "Sesion" },
+      () => { mutateRef.current(); })
+
+    .subscribe();
+
+  return () => { supabase.removeChannel(canal); };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
   // ── MENÚ ──────────────────────────────────────────────────────────────────
   const menuItems = [
-    { name: "Panel General",    href: "/admin",           icon: LayoutDashboard },
-    { name: "Cocina en Vivo",   href: "/admin/cocina",    icon: ChefHat,    badge: pendientesCocina },
-    { name: "Barra / Bebidas",  href: "/admin/barra",     icon: GlassWater, badge: pendientesBarra  },
-    { name: "Mesas y Zonas",    href: "/admin/mesas",     icon: Armchair },
-    { name: "Categorías",       href: "/admin/categorias",icon: Tags },
-    { name: "Productos y Carta",href: "/admin/productos", icon: UtensilsCrossed },
-    { name: "Códigos QR",       href: "/admin/qr",        icon: QrCode },
-    { name: "Historial Ventas", href: "/admin/historial", icon: History },
-    { name: "Métricas",         href: "/admin/analytics", icon: BarChart2 },
+    { name: "Panel General",     href: "/admin",            icon: LayoutDashboard },
+    { name: "Cocina en Vivo",    href: "/admin/cocina",     icon: ChefHat,         badge: pendientesCocina },
+    { name: "Barra / Bebidas",   href: "/admin/barra",      icon: GlassWater,      badge: pendientesBarra  },
+    { name: "Mesas y Zonas",     href: "/admin/mesas",      icon: Armchair },
+    { name: "Categorías",        href: "/admin/categorias", icon: Tags },
+    { name: "Productos y Carta", href: "/admin/productos",  icon: UtensilsCrossed },
+    { name: "Códigos QR",        href: "/admin/qr",         icon: QrCode },
+    { name: "Historial Ventas",  href: "/admin/historial",  icon: History },
+    { name: "Métricas",          href: "/admin/analytics",  icon: BarChart2 },
   ];
 
   return (
@@ -195,7 +242,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {!isSidebarOpen && (
                   <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
                     {item.name}
-                    <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
                   </div>
                 )}
               </Link>
@@ -209,7 +256,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             className={`flex items-center rounded-xl transition-colors font-bold text-sm h-12 w-full group relative text-gray-400 hover:text-red-600 hover:bg-red-50 ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"}`}
           >
             <LogOut size={20} className="flex-shrink-0 relative z-10" />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100" : "opacity-0 w-0 hidden"}`}>Salir</span>
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100" : "opacity-0 w-0 hidden"}`}>
+              Salir
+            </span>
           </button>
         </div>
       </aside>
@@ -221,8 +270,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* ── NAVEGACIÓN MÓVIL ──────────────────────────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-xl z-50 print:hidden">
-        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none z-10"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none z-10"></div>
+        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none z-10" />
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none z-10" />
         <div className="overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="flex justify-start min-w-max px-2 py-2 gap-1">
             {menuItems.map((item) => {
@@ -255,7 +304,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <div className="flex justify-center gap-1 pb-2 pt-1">
           {[...Array(Math.ceil(menuItems.length / 4))].map((_, idx) => (
-            <div key={idx} className={`h-1 rounded-full transition-all ${idx === 0 ? "w-4 bg-red-600" : "w-1 bg-gray-200"}`}></div>
+            <div key={idx} className={`h-1 rounded-full transition-all ${idx === 0 ? "w-4 bg-red-600" : "w-1 bg-gray-200"}`} />
           ))}
         </div>
       </nav>
