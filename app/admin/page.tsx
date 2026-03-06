@@ -341,13 +341,14 @@ export default function AdminDashboard() {
   const sectores: any[] = Array.isArray(sectoresRaw) ? sectoresRaw : [];
 
   // ── REFS ESTABLES ────────────────────────────────────────────────────────
-  // Evitan que el canal Supabase se destruya/recree en cada render
-  const mesasRef = useRef<any[]>([]);
-  const mutateRef = useRef(mutate);
+  const mutateRef           = useRef(mutate);
+  const mesasRef            = useRef<any[]>([]);
+  const prevMesasRef        = useRef<any[]>([]);   // snapshot anterior para diff
   const mesasSolicitadasRef = useRef<Set<number>>(new Set());
+  const inicializado        = useRef(false);        // evita notificar en primer load
 
-  useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
   useEffect(() => { mutateRef.current = mutate; }, [mutate]);
+  useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
 
   // ── MAPA: cargar layout de zonas ─────────────────────────────────────────
   useEffect(() => {
@@ -358,78 +359,80 @@ export default function AdminDashboard() {
       .catch(() => {});
   }, [vistaMapa]);
 
-  // ── CANAL SUPABASE — dependencias vacías, se monta UNA sola vez ──────────
+  // ── NOTIFICACIONES BASADAS EN DIFF DE DATOS SWR ──────────────────────────
+  // Se ejecuta cada vez que SWR actualiza `mesas`. Compara snapshot anterior
+  // vs nuevo para disparar sonidos/toasts sin depender del payload de Realtime.
   useEffect(() => {
-    console.log("🔌 [CANAL] Montando...");
+    if (!Array.isArray(mesas) || mesas.length === 0) return;
 
-    const canal = supabase
-      .channel("admin-dashboard-v2")
-      // Nuevo pedido → sonido ding + toast
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "Pedido" },
-        (payload) => {
-          console.log("🍽️ INSERT Pedido:", payload.new?.id);
-          mutateRef.current();
-          audioManager.play("ding");
-          navigator.vibrate?.([200, 100, 200]);
-          notify.pedido("¡Nuevo pedido!", String(payload.new?.id ?? ""));
-        },
-      )
-      // Pedido modificado → solo refrescar
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "Pedido" },
-        () => { mutateRef.current(); },
-      )
-      // Sesión modificada → detectar solicitud de cuenta
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "Sesion" },
-        (payload) => {
-          console.log(
-            "🧾 UPDATE Sesion — solicitaCuenta:",
-            payload.old?.solicitaCuenta, "->", payload.new?.solicitaCuenta,
-          );
-          mutateRef.current();
+    // Primer load: solo guardamos snapshot, sin notificar
+    if (!inicializado.current) {
+      prevMesasRef.current = mesas;
+      inicializado.current = true;
+      return;
+    }
 
-          // Solo notificar cuando pasa de null/false → truthy
-          const pideCuenta = !payload.old?.solicitaCuenta && !!payload.new?.solicitaCuenta;
-          if (!pideCuenta) return;
+    const prev = prevMesasRef.current;
 
-          const mesaId: number = payload.new?.mesaId;
+    mesas.forEach((mesa: any) => {
+      const anterior = prev.find((m: any) => m.id === mesa.id);
 
-          // Debounce: ignorar duplicados en ventana de 10s
-          if (mesasSolicitadasRef.current.has(mesaId)) {
-            console.log("🧾 Duplicado ignorado, mesaId:", mesaId);
-            return;
-          }
-          mesasSolicitadasRef.current.add(mesaId);
-          setTimeout(() => mesasSolicitadasRef.current.delete(mesaId), 10_000);
+      // 1. Mesa nueva con total > 0 = nuevo pedido en mesa recién abierta
+      if (!anterior && mesa.totalActual > 0) {
+        audioManager.play("ding");
+        navigator.vibrate?.([200, 100, 200]);
+        notify.pedido("¡Nuevo pedido!", mesa.nombre);
+        return;
+      }
 
+      if (!anterior) return;
+
+      // 2. Total subió = nuevo ítem/pedido agregado
+      if (mesa.totalActual > anterior.totalActual) {
+        audioManager.play("ding");
+        navigator.vibrate?.([200, 100, 200]);
+        notify.pedido("¡Nuevo pedido!", mesa.nombre);
+      }
+
+      // 3. solicitaCuenta pasó de falsy → truthy
+      if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
+        if (!mesasSolicitadasRef.current.has(mesa.id)) {
+          mesasSolicitadasRef.current.add(mesa.id);
+          setTimeout(() => mesasSolicitadasRef.current.delete(mesa.id), 10_000);
           audioManager.play("caja");
           navigator.vibrate?.([300, 100, 300]);
+          notify.atencion("¡Piden la cuenta!", mesa.nombre);
+        }
+      }
+    });
 
-          const mesaNombre =
-            mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
-          notify.atencion("¡Piden la cuenta!", mesaNombre);
-        },
-      )
-      // Nueva sesión (mesa abierta) → refrescar
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "Sesion" },
-        () => { mutateRef.current(); },
-      )
+    prevMesasRef.current = mesas;
+  }, [mesas]);
+
+  // ── CANAL SUPABASE — solo dispara mutate(), notificaciones van en el diff ─
+  useEffect(() => {
+    const channelId = `admin-v2-${Math.random().toString(36).slice(2, 8)}`;
+    console.log("🔌 [CANAL] Montando:", channelId);
+
+    const canal = supabase
+      .channel(channelId)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "Pedido" },
+        () => { mutateRef.current(); })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Pedido" },
+        () => { mutateRef.current(); })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Sesion" },
+        () => { mutateRef.current(); })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "Sesion" },
+        () => { mutateRef.current(); })
       .subscribe((status) => {
-        console.log("📡 [CANAL] Estado:", status);
+        console.log("📡 [CANAL] Estado:", status, channelId);
       });
 
     return () => {
-      console.log("🔴 [CANAL] Desmontando");
+      console.log("🔴 [CANAL] Desmontando:", channelId);
       supabase.removeChannel(canal);
     };
-  }, []); // ← vacío: el canal vive toda la sesión
+  }, []);
 
   // ── HELPERS ──────────────────────────────────────────────────────────────
 
