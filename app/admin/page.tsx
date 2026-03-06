@@ -4,6 +4,8 @@ import { supabase } from "@/lib/supabase";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import { audioManager } from "@/lib/audio";
+import { notify } from "@/lib/notify";
 import {
   RefreshCcw,
   Filter,
@@ -21,13 +23,15 @@ import {
   Move,
 } from "lucide-react";
 
-
+// ─── UTILS ───────────────────────────────────────────────────────────────────
 
 const fetcher = (url: string) =>
   fetch(url).then(async (res) => {
     if (!res.ok) return [];
     return res.json();
   });
+
+// ─── CONSTANTES ──────────────────────────────────────────────────────────────
 
 const PALETA = [
   { borde: "#ef4444", fondo: "rgba(254,242,242,0.55)", titulo: "#b91c1c" },
@@ -75,6 +79,8 @@ const METODO_CONFIG: Record<
   },
 };
 
+// ─── TIPOS ───────────────────────────────────────────────────────────────────
+
 interface ZonaRect {
   x: number;
   y: number;
@@ -82,7 +88,8 @@ interface ZonaRect {
   h: number;
 }
 
-// ─── CANVAS CON PAN TIPO GOOGLE MAPS ─────────────────────────────────────────
+// ─── COMPONENTE: MAPA CANVAS ─────────────────────────────────────────────────
+
 function MapCanvas({
   zonasLayout,
   sectoresConZona,
@@ -103,16 +110,13 @@ function MapCanvas({
   const lastPos = useRef({ x: 0, y: 0 });
   const didMove = useRef(false);
 
-  const startPan = (
-    clientX: number,
-    clientY: number,
-    target: EventTarget | null,
-  ) => {
+  const startPan = (clientX: number, clientY: number, target: EventTarget | null) => {
     if ((target as HTMLElement)?.closest("[data-mesa]")) return;
     panning.current = true;
     didMove.current = false;
     lastPos.current = { x: clientX, y: clientY };
   };
+
   const movePan = (clientX: number, clientY: number) => {
     if (!panning.current) return;
     const dx = clientX - lastPos.current.x;
@@ -121,29 +125,19 @@ function MapCanvas({
     lastPos.current = { x: clientX, y: clientY };
     setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
   };
-  const endPan = () => {
-    panning.current = false;
-  };
+
+  const endPan = () => { panning.current = false; };
 
   return (
     <div
       className="absolute inset-0 overflow-hidden select-none bg-[#e8ecf0]"
       style={{ cursor: "grab", touchAction: "none" }}
-      onMouseDown={(e) => {
-        e.preventDefault();
-        startPan(e.clientX, e.clientY, e.target);
-      }}
+      onMouseDown={(e) => { e.preventDefault(); startPan(e.clientX, e.clientY, e.target); }}
       onMouseMove={(e) => movePan(e.clientX, e.clientY)}
       onMouseUp={endPan}
       onMouseLeave={endPan}
-      onTouchStart={(e) => {
-        if (e.touches.length === 1)
-          startPan(e.touches[0].clientX, e.touches[0].clientY, e.target);
-      }}
-      onTouchMove={(e) => {
-        if (e.touches.length === 1)
-          movePan(e.touches[0].clientX, e.touches[0].clientY);
-      }}
+      onTouchStart={(e) => { if (e.touches.length === 1) startPan(e.touches[0].clientX, e.touches[0].clientY, e.target); }}
+      onTouchMove={(e) => { if (e.touches.length === 1) movePan(e.touches[0].clientX, e.touches[0].clientY); }}
       onTouchEnd={endPan}
     >
       <div
@@ -175,13 +169,7 @@ function MapCanvas({
               <div
                 key={s.nombre}
                 className="absolute pointer-events-none"
-                style={{
-                  left: zona.x,
-                  top: zona.y,
-                  width: zona.w,
-                  height: zona.h,
-                  zIndex: 1,
-                }}
+                style={{ left: zona.x, top: zona.y, width: zona.w, height: zona.h, zIndex: 1 }}
               >
                 <div
                   style={{
@@ -205,34 +193,10 @@ function MapCanvas({
                 />
                 {(
                   [
-                    {
-                      top: -2,
-                      left: -2,
-                      bt: `3px solid ${color.borde}`,
-                      bl: `3px solid ${color.borde}`,
-                      br: "5px 0 0 0",
-                    },
-                    {
-                      top: -2,
-                      right: -2,
-                      bt: `3px solid ${color.borde}`,
-                      br2: `3px solid ${color.borde}`,
-                      br: "0 5px 0 0",
-                    },
-                    {
-                      bottom: -2,
-                      left: -2,
-                      bb: `3px solid ${color.borde}`,
-                      bl: `3px solid ${color.borde}`,
-                      br: "0 0 0 5px",
-                    },
-                    {
-                      bottom: -2,
-                      right: -2,
-                      bb: `3px solid ${color.borde}`,
-                      br2: `3px solid ${color.borde}`,
-                      br: "0 0 5px 0",
-                    },
+                    { top: -2, left: -2,     bt: `3px solid ${color.borde}`, bl: `3px solid ${color.borde}`,  br: "5px 0 0 0" },
+                    { top: -2, right: -2,    bt: `3px solid ${color.borde}`, br2: `3px solid ${color.borde}`, br: "0 5px 0 0" },
+                    { bottom: -2, left: -2,  bb: `3px solid ${color.borde}`, bl: `3px solid ${color.borde}`,  br: "0 0 0 5px" },
+                    { bottom: -2, right: -2, bb: `3px solid ${color.borde}`, br2: `3px solid ${color.borde}`, br: "0 0 5px 0" },
                   ] as any[]
                 ).map((c, i) => (
                   <div
@@ -280,9 +244,7 @@ function MapCanvas({
 
         {/* MESAS */}
         {mesasFiltradas.map((mesa: any) => {
-          const metodo = mesa.metodoPago
-            ? METODO_CONFIG[mesa.metodoPago]
-            : null;
+          const metodo = mesa.metodoPago ? METODO_CONFIG[mesa.metodoPago] : null;
           return (
             <div
               key={mesa.id}
@@ -294,38 +256,34 @@ function MapCanvas({
                 zIndex: 10,
               }}
               onClick={() => {
-                if (!didMove.current && mesa.estado === "OCUPADA")
-                  setMesaParaCobrar(mesa);
+                if (!didMove.current && mesa.estado === "OCUPADA") setMesaParaCobrar(mesa);
               }}
             >
               <div
                 className={`
-                w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center
-                cursor-pointer hover:scale-110 transition-transform relative bg-white
-                ${
-                  mesa.solicitaCuenta
-                    ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse"
-                    : mesa.estado === "OCUPADA"
-                      ? "border-red-400 text-red-600"
-                      : "border-gray-300 text-gray-400 opacity-50"
-                }
-              `}
+                  w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center
+                  cursor-pointer hover:scale-110 transition-transform relative bg-white
+                  ${
+                    mesa.solicitaCuenta
+                      ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse"
+                      : mesa.estado === "OCUPADA"
+                        ? "border-red-400 text-red-600"
+                        : "border-gray-300 text-gray-400 opacity-50"
+                  }
+                `}
               >
                 <div className="absolute -top-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -bottom-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -left-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -right-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
 
-                {/* Badge pide cuenta */}
                 {mesa.solicitaCuenta && (
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-20 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1">
                     <HandCoins size={10} /> PIDE CUENTA
                   </div>
                 )}
 
-                <span className="font-black text-lg leading-none">
-                  {mesa.nombre}
-                </span>
+                <span className="font-black text-lg leading-none">{mesa.nombre}</span>
 
                 {mesa.estado === "OCUPADA" && (
                   <span className="text-xs font-bold mt-1.5 text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
@@ -333,16 +291,15 @@ function MapCanvas({
                   </span>
                 )}
 
-                {/* Método de pago — pill debajo de la mesa */}
                 {metodo && mesa.solicitaCuenta && (
                   <div
                     className={`
-                    absolute -bottom-6 left-1/2 -translate-x-1/2 z-20
-                    text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm text-white
-                    ${mesa.metodoPago === "QR" ? "bg-blue-500" : ""}
-                    ${mesa.metodoPago === "TARJETA" ? "bg-purple-500" : ""}
-                    ${mesa.metodoPago === "EFECTIVO" ? "bg-green-600" : ""}
-                  `}
+                      absolute -bottom-6 left-1/2 -translate-x-1/2 z-20
+                      text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm text-white
+                      ${mesa.metodoPago === "QR" ? "bg-blue-500" : ""}
+                      ${mesa.metodoPago === "TARJETA" ? "bg-purple-500" : ""}
+                      ${mesa.metodoPago === "EFECTIVO" ? "bg-green-600" : ""}
+                    `}
                   >
                     {metodo.emoji} {metodo.labelCorto}
                   </div>
@@ -353,7 +310,6 @@ function MapCanvas({
         })}
       </div>
 
-      {/* Hint navegación */}
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5">
         <Move size={11} /> Arrastrá para moverte
       </div>
@@ -361,13 +317,15 @@ function MapCanvas({
   );
 }
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+// ─── COMPONENTE PRINCIPAL: DASHBOARD ─────────────────────────────────────────
+
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null);
   const [vistaMapa, setVistaMapa] = useState(false);
   const [zonasLayout, setZonasLayout] = useState<Record<string, ZonaRect>>({});
 
+  // ── SWR ──────────────────────────────────────────────────────────────────
   const {
     data: mesas = [],
     mutate,
@@ -376,16 +334,22 @@ export default function AdminDashboard() {
     revalidateOnFocus: true,
     fallbackData: [],
   });
+
   const { data: sectoresRaw } = useSWR("/api/admin/sectores", fetcher, {
     fallbackData: [],
   });
   const sectores: any[] = Array.isArray(sectoresRaw) ? sectoresRaw : [];
 
-  const colorDe = (nombre: string) => {
-    const idx = sectores.findIndex((s: any) => s.nombre === nombre);
-    return PALETA[(idx < 0 ? 0 : idx) % PALETA.length];
-  };
+  // ── REFS ESTABLES ────────────────────────────────────────────────────────
+  // Evitan que el canal Supabase se destruya/recree en cada render
+  const mesasRef = useRef<any[]>([]);
+  const mutateRef = useRef(mutate);
+  const mesasSolicitadasRef = useRef<Set<number>>(new Set());
 
+  useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
+  useEffect(() => { mutateRef.current = mutate; }, [mutate]);
+
+  // ── MAPA: cargar layout de zonas ─────────────────────────────────────────
   useEffect(() => {
     if (!vistaMapa) return;
     fetch("/api/admin/sectores/layout")
@@ -394,40 +358,113 @@ export default function AdminDashboard() {
       .catch(() => {});
   }, [vistaMapa]);
 
+  // ── CANAL SUPABASE — dependencias vacías, se monta UNA sola vez ──────────
   useEffect(() => {
+    console.log("🔌 [CANAL] Montando...");
+
     const canal = supabase
-      .channel("cambios-admin-dashboard")
+      .channel("admin-dashboard-v2")
+      // Nuevo pedido → sonido ding + toast
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "Sesion" },
-        () => mutate(),
+        { event: "INSERT", schema: "public", table: "Pedido" },
+        (payload) => {
+          console.log("🍽️ INSERT Pedido:", payload.new?.id);
+          mutateRef.current();
+          audioManager.play("ding");
+          navigator.vibrate?.([200, 100, 200]);
+          notify.pedido("¡Nuevo pedido!", String(payload.new?.id ?? ""));
+        },
       )
+      // Pedido modificado → solo refrescar
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "Pedido" },
-        () => mutate(),
+        { event: "UPDATE", schema: "public", table: "Pedido" },
+        () => { mutateRef.current(); },
       )
-      .subscribe();
+      // Sesión modificada → detectar solicitud de cuenta
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Sesion" },
+        (payload) => {
+          console.log(
+            "🧾 UPDATE Sesion — solicitaCuenta:",
+            payload.old?.solicitaCuenta, "->", payload.new?.solicitaCuenta,
+          );
+          mutateRef.current();
+
+          // Solo notificar cuando pasa de null/false → truthy
+          const pideCuenta = !payload.old?.solicitaCuenta && !!payload.new?.solicitaCuenta;
+          if (!pideCuenta) return;
+
+          const mesaId: number = payload.new?.mesaId;
+
+          // Debounce: ignorar duplicados en ventana de 10s
+          if (mesasSolicitadasRef.current.has(mesaId)) {
+            console.log("🧾 Duplicado ignorado, mesaId:", mesaId);
+            return;
+          }
+          mesasSolicitadasRef.current.add(mesaId);
+          setTimeout(() => mesasSolicitadasRef.current.delete(mesaId), 10_000);
+
+          audioManager.play("caja");
+          navigator.vibrate?.([300, 100, 300]);
+
+          const mesaNombre =
+            mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
+          notify.atencion("¡Piden la cuenta!", mesaNombre);
+        },
+      )
+      // Nueva sesión (mesa abierta) → refrescar
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "Sesion" },
+        () => { mutateRef.current(); },
+      )
+      .subscribe((status) => {
+        console.log("📡 [CANAL] Estado:", status);
+      });
+
     return () => {
+      console.log("🔴 [CANAL] Desmontando");
       supabase.removeChannel(canal);
     };
-  }, [mutate]);
+  }, []); // ← vacío: el canal vive toda la sesión
+
+  // ── HELPERS ──────────────────────────────────────────────────────────────
+
+  const colorDe = (nombre: string) => {
+    const idx = sectores.findIndex((s: any) => s.nombre === nombre);
+    return PALETA[(idx < 0 ? 0 : idx) % PALETA.length];
+  };
 
   const imprimirTicketCierre = (mesa: any) => {
     const v = window.open("", "PRINT", "height=600,width=400");
     if (!v) return;
-    v.document.write(`<html><head><title>Ticket ${mesa.nombre}</title>
-      <style>body{font-family:'Courier New',monospace;padding:10px;width:300px;margin:0 auto;text-transform:uppercase}
-      .hdr{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px;margin-bottom:10px}
-      .item{display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px}
-      .tot{border-top:2px dashed #000;padding-top:10px;margin-top:10px;display:flex;justify-content:space-between;font-weight:bold;font-size:16px}
-      .ftr{text-align:center;font-size:10px;margin-top:20px}</style></head><body>
-      <div class="hdr"><h1 style="font-size:20px;font-weight:bold;margin:0">KARTA RESTO</h1>
-      <div>PRE-CUENTA</div><div>MESA: ${mesa.nombre}</div><div>${new Date().toLocaleString()}</div></div>
-      ${mesa.detalles?.map((d: any) => `<div class="item"><span>${d.cantidad} x ${d.producto}</span><span>$${d.subtotal}</span></div>`).join("") || '<div style="text-align:center">Detalle no disponible</div>'}
+    v.document.write(`
+      <html><head><title>Ticket ${mesa.nombre}</title>
+      <style>
+        body { font-family: 'Courier New', monospace; padding: 10px; width: 300px; margin: 0 auto; text-transform: uppercase; }
+        .hdr { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+        .item { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px; }
+        .tot { border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; }
+        .ftr { text-align: center; font-size: 10px; margin-top: 20px; }
+      </style></head><body>
+      <div class="hdr">
+        <h1 style="font-size:20px;font-weight:bold;margin:0">KARTA RESTO</h1>
+        <div>PRE-CUENTA</div>
+        <div>MESA: ${mesa.nombre}</div>
+        <div>${new Date().toLocaleString()}</div>
+      </div>
+      ${
+        mesa.detalles?.map(
+          (d: any) => `<div class="item"><span>${d.cantidad} x ${d.producto}</span><span>$${d.subtotal}</span></div>`,
+        ).join("") || '<div style="text-align:center">Detalle no disponible</div>'
+      }
       <div class="tot"><span>TOTAL A PAGAR</span><span>$${mesa.totalActual}</span></div>
       <div class="ftr">NO VALIDO COMO FACTURA<br/>GRACIAS POR SU VISITA</div>
-      </body></html>`);
+      </body></html>
+    `);
     v.document.close();
     v.focus();
     v.print();
@@ -447,11 +484,15 @@ export default function AdminDashboard() {
         toast.success("Mesa cerrada 💰", { id: tid });
         mutate();
         setMesaParaCobrar(null);
-      } else toast.error("Error al cerrar", { id: tid });
+      } else {
+        toast.error("Error al cerrar", { id: tid });
+      }
     } catch {
       toast.error("Error de conexión", { id: tid });
     }
   };
+
+  // ── MEMOS ────────────────────────────────────────────────────────────────
 
   const mesasFiltradas = useMemo(() => {
     if (!Array.isArray(mesas)) return [];
@@ -465,17 +506,17 @@ export default function AdminDashboard() {
     [sectores, zonasLayout],
   );
 
+  // ── RENDER ───────────────────────────────────────────────────────────────
+
   return (
     <>
-      {/* ── MAPA FULL-SCREEN OVERLAY ─────────────────────────────────────────── */}
+      {/* ── MAPA FULL-SCREEN OVERLAY ───────────────────────────────────────── */}
       {vistaMapa && (
         <div className="fixed inset-0 z-50 bg-[#e8ecf0]">
           <div className="absolute top-4 left-4 right-4 z-50 flex items-center gap-3">
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shrink-0">
               <Store className="text-red-600" size={18} />
-              <span className="font-black text-gray-800 text-sm hidden sm:block">
-                Control de Salón
-              </span>
+              <span className="font-black text-gray-800 text-sm hidden sm:block">Control de Salón</span>
             </div>
 
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-3 py-2 flex items-center gap-2">
@@ -487,31 +528,21 @@ export default function AdminDashboard() {
               >
                 <option value="Todos">Todos los sectores</option>
                 {sectores.map((s: any) => (
-                  <option key={s.id} value={s.nombre}>
-                    {s.nombre}
-                  </option>
+                  <option key={s.id} value={s.nombre}>{s.nombre}</option>
                 ))}
               </select>
             </div>
 
             <div className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl px-3 py-2.5 hidden sm:flex items-center gap-1.5">
-              <span className="text-xs font-black text-gray-700">
-                {mesasFiltradas.length}
-              </span>
+              <span className="text-xs font-black text-gray-700">{mesasFiltradas.length}</span>
               <span className="text-xs text-gray-400 font-medium">mesas</span>
-              {mesasFiltradas.filter((m: any) => m.estado === "OCUPADA")
-                .length > 0 && (
+              {mesasFiltradas.filter((m: any) => m.estado === "OCUPADA").length > 0 && (
                 <>
                   <div className="h-3 w-px bg-gray-200 mx-1" />
                   <span className="text-xs font-black text-red-500">
-                    {
-                      mesasFiltradas.filter((m: any) => m.estado === "OCUPADA")
-                        .length
-                    }
+                    {mesasFiltradas.filter((m: any) => m.estado === "OCUPADA").length}
                   </span>
-                  <span className="text-xs text-gray-400 font-medium">
-                    ocupadas
-                  </span>
+                  <span className="text-xs text-gray-400 font-medium">ocupadas</span>
                 </>
               )}
             </div>
@@ -520,10 +551,7 @@ export default function AdminDashboard() {
               onClick={() => mutate()}
               className="bg-white/95 backdrop-blur-md shadow-lg border border-white/60 rounded-2xl p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50/80 transition-all active:scale-95"
             >
-              <RefreshCcw
-                size={18}
-                className={cargando ? "animate-spin" : ""}
-              />
+              <RefreshCcw size={18} className={cargando ? "animate-spin" : ""} />
             </button>
 
             <div className="flex-1" />
@@ -558,7 +586,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ── VISTA NORMAL ─────────────────────────────────────────────────────── */}
+      {/* ── VISTA LISTA ────────────────────────────────────────────────────── */}
       <div className="space-y-6 relative flex flex-col w-full max-w-[100vw] overflow-x-hidden">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
@@ -567,9 +595,7 @@ export default function AdminDashboard() {
               <Store className="text-red-600" size={24} /> Control de Salón
             </h2>
             <p className="text-xs text-gray-400 font-medium mt-1">
-              {cargando
-                ? "Sincronizando..."
-                : `${mesasFiltradas.length} mesas activas`}
+              {cargando ? "Sincronizando..." : `${mesasFiltradas.length} mesas activas`}
             </p>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
@@ -578,10 +604,7 @@ export default function AdminDashboard() {
                 className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-blue-50 hover:text-blue-600 text-gray-500 transition-colors shadow-sm group active:scale-95"
                 title="Editar distribución"
               >
-                <PenTool
-                  size={18}
-                  className="group-hover:scale-110 transition-transform"
-                />
+                <PenTool size={18} className="group-hover:scale-110 transition-transform" />
               </button>
             </Link>
             <button
@@ -592,10 +615,7 @@ export default function AdminDashboard() {
               <span className="hidden sm:inline">Ver Mapa</span>
             </button>
             <div className="relative flex-1 sm:flex-none">
-              <Filter
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-              />
+              <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <select
                 className="w-full sm:w-auto pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-base md:text-sm font-bold text-gray-700 outline-none cursor-pointer hover:bg-gray-100 transition-colors appearance-none"
                 value={filtroSector}
@@ -603,9 +623,7 @@ export default function AdminDashboard() {
               >
                 <option value="Todos">Todos los sectores</option>
                 {sectores.map((s: any) => (
-                  <option key={s.id} value={s.nombre}>
-                    {s.nombre}
-                  </option>
+                  <option key={s.id} value={s.nombre}>{s.nombre}</option>
                 ))}
               </select>
             </div>
@@ -613,10 +631,7 @@ export default function AdminDashboard() {
               onClick={() => mutate()}
               className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all active:scale-95 shadow-sm"
             >
-              <RefreshCcw
-                size={20}
-                className={cargando ? "animate-spin" : ""}
-              />
+              <RefreshCcw size={20} className={cargando ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
@@ -624,41 +639,34 @@ export default function AdminDashboard() {
         {/* GRID DE MESAS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
           {mesasFiltradas.map((mesa: any) => {
-            const metodo = mesa.metodoPago
-              ? METODO_CONFIG[mesa.metodoPago]
-              : null;
+            const metodo = mesa.metodoPago ? METODO_CONFIG[mesa.metodoPago] : null;
             return (
               <div
                 key={mesa.id}
                 className={`
-                relative p-5 rounded-2xl border transition-all duration-300
-                ${
-                  mesa.solicitaCuenta
-                    ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
-                    : mesa.estado === "OCUPADA"
-                      ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                      : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
-                }
-              `}
+                  relative p-5 rounded-2xl border transition-all duration-300
+                  ${
+                    mesa.solicitaCuenta
+                      ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
+                      : mesa.estado === "OCUPADA"
+                        ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                        : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+                  }
+                `}
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-black text-gray-800 leading-tight">
-                      {mesa.nombre}
-                    </h3>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      {mesa.sector}
-                    </span>
+                    <h3 className="text-lg font-black text-gray-800 leading-tight">{mesa.nombre}</h3>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{mesa.sector}</span>
                   </div>
                   <span
                     className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide
-                    ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}
+                      ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}
                   >
                     {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
                   </span>
                 </div>
 
-                {/* Banner pide cuenta */}
                 {mesa.solicitaCuenta && (
                   <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
                     <HandCoins size={14} /> ¡PIDE CUENTA!
@@ -668,7 +676,6 @@ export default function AdminDashboard() {
                 {mesa.estado === "OCUPADA" ? (
                   <>
                     <div className="space-y-3 mb-6">
-                      {/* Hora + método de pago en la misma fila */}
                       <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
                         <div className="flex items-center gap-2">
                           <Clock size={14} className="text-gray-400" />
@@ -680,9 +687,7 @@ export default function AdminDashboard() {
                           </span>
                         </div>
                         {metodo && (
-                          <div
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wide ${metodo.bg} ${metodo.text}`}
-                          >
+                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wide ${metodo.bg} ${metodo.text}`}>
                             <span>{metodo.emoji}</span>
                             {metodo.labelCorto}
                           </div>
@@ -690,18 +695,10 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
-                        <span className="text-xs font-bold text-gray-400 uppercase">
-                          Total
-                        </span>
+                        <span className="text-xs font-bold text-gray-400 uppercase">Total</span>
                         <div className="flex items-center text-gray-900">
-                          <DollarSign
-                            size={16}
-                            className="text-gray-400"
-                            strokeWidth={3}
-                          />
-                          <span className="text-2xl font-black">
-                            {mesa.totalActual}
-                          </span>
+                          <DollarSign size={16} className="text-gray-400" strokeWidth={3} />
+                          <span className="text-2xl font-black">{mesa.totalActual}</span>
                         </div>
                       </div>
                     </div>
@@ -716,9 +713,7 @@ export default function AdminDashboard() {
                   </>
                 ) : (
                   <div className="h-24 flex flex-col items-center justify-center text-gray-300">
-                    <span className="text-xs font-bold uppercase tracking-widest">
-                      Disponible
-                    </span>
+                    <span className="text-xs font-bold uppercase tracking-widest">Disponible</span>
                   </div>
                 )}
               </div>
@@ -727,7 +722,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── MODAL COBRO ──────────────────────────────────────────────────────── */}
+      {/* ── MODAL COBRO ────────────────────────────────────────────────────── */}
       {mesaParaCobrar &&
         (() => {
           const metodo = mesaParaCobrar.metodoPago
@@ -747,32 +742,22 @@ export default function AdminDashboard() {
                   <h3 className="text-2xl font-black uppercase tracking-tight">
                     Mesa {mesaParaCobrar.nombre}
                   </h3>
-                  <p className="text-red-100 text-sm font-medium mt-1">
-                    {mesaParaCobrar.sector || ""}
-                  </p>
+                  <p className="text-red-100 text-sm font-medium mt-1">{mesaParaCobrar.sector || ""}</p>
                 </div>
 
                 <div className="p-6 space-y-5">
                   {/* Total */}
                   <div className="text-center">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">
-                      Total a cobrar
-                    </span>
-                    <div className="text-5xl font-black text-gray-900 mt-1">
-                      ${mesaParaCobrar.totalActual}
-                    </div>
+                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Total a cobrar</span>
+                    <div className="text-5xl font-black text-gray-900 mt-1">${mesaParaCobrar.totalActual}</div>
                   </div>
 
                   {/* Método de pago */}
                   {metodo ? (
-                    <div
-                      className={`flex items-center gap-3 py-3 px-4 rounded-2xl border-2 font-black text-sm ${metodo.bg} ${metodo.border} ${metodo.text}`}
-                    >
+                    <div className={`flex items-center gap-3 py-3 px-4 rounded-2xl border-2 font-black text-sm ${metodo.bg} ${metodo.border} ${metodo.text}`}>
                       <span className="text-2xl">{metodo.emoji}</span>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-0.5">
-                          Método elegido
-                        </p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-0.5">Método elegido</p>
                         {metodo.label}
                       </div>
                     </div>
@@ -782,23 +767,15 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* Detalle de items */}
+                  {/* Detalle */}
                   {mesaParaCobrar.detalles?.length > 0 && (
                     <div className="bg-gray-50 rounded-2xl p-4 max-h-40 overflow-y-auto space-y-2">
                       {mesaParaCobrar.detalles.map((d: any, i: number) => (
-                        <div
-                          key={i}
-                          className="flex justify-between items-center text-sm"
-                        >
+                        <div key={i} className="flex justify-between items-center text-sm">
                           <span className="text-gray-600 font-medium">
-                            <span className="font-black text-gray-800">
-                              {d.cantidad}x
-                            </span>{" "}
-                            {d.producto}
+                            <span className="font-black text-gray-800">{d.cantidad}x</span> {d.producto}
                           </span>
-                          <span className="font-bold text-gray-800">
-                            ${d.subtotal}
-                          </span>
+                          <span className="font-bold text-gray-800">${d.subtotal}</span>
                         </div>
                       ))}
                     </div>
@@ -810,26 +787,16 @@ export default function AdminDashboard() {
                       onClick={() => imprimirTicketCierre(mesaParaCobrar)}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group active:scale-95"
                     >
-                      <Printer
-                        size={28}
-                        className="text-gray-400 group-hover:text-gray-600"
-                      />
-                      <span className="font-bold text-gray-600 text-xs">
-                        Imprimir Ticket
-                      </span>
+                      <Printer size={28} className="text-gray-400 group-hover:text-gray-600" />
+                      <span className="font-bold text-gray-600 text-xs">Imprimir Ticket</span>
                     </button>
 
                     <button
                       onClick={ejecutarCierre}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group active:scale-95"
                     >
-                      <CheckCircle2
-                        size={28}
-                        className="text-green-600 group-hover:scale-110 transition-transform"
-                      />
-                      <span className="font-bold text-green-700 text-xs">
-                        Cerrar y Liberar
-                      </span>
+                      <CheckCircle2 size={28} className="text-green-600 group-hover:scale-110 transition-transform" />
+                      <span className="font-bold text-green-700 text-xs">Cerrar y Liberar</span>
                     </button>
                   </div>
                 </div>

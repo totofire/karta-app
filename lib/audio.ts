@@ -1,63 +1,90 @@
-/**
- * Singleton de audio compartido por todos los listeners.
- * Se desbloquea una sola vez ante cualquier interacción del usuario.
- */
-
 type SoundKey = 'ding' | 'caja';
 
 const SOUNDS: Record<SoundKey, string> = {
-  ding:  '/sounds/ding.mp3',
-  caja:  '/sounds/caja.mp3',
+  ding: '/sounds/ding.mp3',
+  caja: '/sounds/caja.mp3',
 };
 
+const SESSION_KEY = 'karta_audio_unlocked';
+
 class AudioManager {
-  private instances: Partial<Record<SoundKey, HTMLAudioElement>> = {};
-  private _unlocked = false;
+  private _unlocked  = false;
+  private _unlocking = false;
   private _listeners: Array<() => void> = [];
 
-  /** Inicializa las instancias (llamar desde el cliente) */
-  init() {
-    if (typeof window === 'undefined' || Object.keys(this.instances).length) return;
-    for (const [key, src] of Object.entries(SOUNDS)) {
-      const audio = new Audio(src);
-      audio.preload = 'auto';
-      this.instances[key as SoundKey] = audio;
+  constructor() {
+    // Restaurar desde sessionStorage si el usuario ya desbloqueó en esta sesión.
+    // Esto sobrevive a router.refresh() y HMR en dev.
+    if (typeof window !== 'undefined') {
+      this._unlocked = sessionStorage.getItem(SESSION_KEY) === '1';
     }
   }
 
   get unlocked() { return this._unlocked; }
 
-  /** Intenta desbloquear reproduciendo silenciosamente. Devuelve true si lo logró. */
+  init() {} // no-op, mantenido por compatibilidad
+
   async tryUnlock(): Promise<boolean> {
     if (this._unlocked) return true;
-    this.init();
-    const audio = this.instances.ding;
-    if (!audio) return false;
+    if (typeof window === 'undefined') return false;
+
+    if (this._unlocking) {
+      return new Promise<boolean>((resolve) => {
+        const interval = setInterval(() => {
+          if (!this._unlocking) {
+            clearInterval(interval);
+            resolve(this._unlocked);
+          }
+        }, 30);
+      });
+    }
+
+    this._unlocking = true;
     try {
+      const audio = new Audio(SOUNDS.ding);
+      audio.volume = 0;
       await audio.play();
       audio.pause();
-      audio.currentTime = 0;
+      audio.src = '';
       this._unlocked = true;
-      this._listeners.forEach(fn => fn());
+      sessionStorage.setItem(SESSION_KEY, '1'); // ← persistir
+      this._listeners.forEach((fn) => fn());
       return true;
     } catch {
       return false;
+    } finally {
+      this._unlocking = false;
     }
   }
 
-  /** Reproduce un sonido (solo si está desbloqueado) */
   play(key: SoundKey) {
-    if (!this._unlocked) return;
-    const audio = this.instances[key];
-    if (!audio) return;
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
+    if (typeof window === 'undefined') return;
+
+    // Si sessionStorage dice que estaba desbloqueado pero el flag en memoria
+    // fue reseteado (router.refresh / HMR), lo restauramos antes de reproducir.
+    if (!this._unlocked && sessionStorage.getItem(SESSION_KEY) === '1') {
+      this._unlocked = true;
+    }
+
+    if (!this._unlocked) {
+      console.warn(`[AudioManager] play("${key}") ignorado: audio no desbloqueado.`);
+      return;
+    }
+
+    try {
+      const audio = new Audio(SOUNDS[key]);
+      audio.volume = 1;
+      audio.play().catch((err) => {
+        console.warn('[AudioManager] play() falló:', err);
+      });
+    } catch (err) {
+      console.warn('[AudioManager] Error creando Audio:', err);
+    }
   }
 
-  /** Suscribirse al evento de desbloqueo */
   onUnlock(fn: () => void) {
     this._listeners.push(fn);
-    return () => { this._listeners = this._listeners.filter(l => l !== fn); };
+    return () => { this._listeners = this._listeners.filter((l) => l !== fn); };
   }
 }
 
