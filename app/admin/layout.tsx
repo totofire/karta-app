@@ -23,6 +23,7 @@ import {
   Tags,
   GlassWater,
   BarChart2,
+  Users,
 } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);
@@ -174,6 +175,7 @@ useEffect(() => {
     { name: "Códigos QR",        href: "/admin/qr",         icon: QrCode },
     { name: "Historial Ventas",  href: "/admin/historial",  icon: History },
     { name: "Métricas",          href: "/admin/analytics",  icon: BarChart2 },
+    { name: "Equipo",            href: "/admin/equipo",     icon: Users },
   ];
 
   return (

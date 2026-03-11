@@ -5,16 +5,16 @@ import { randomBytes } from "crypto";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/superadmin/locales/[id]/reenviar-invite
-// Regenera el token y reenvía el mail de invitación al admin del local
+// Regenera el token y devuelve la URL para mandar por WhatsApp
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }   // ← Next.js 15: Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSuperAdmin();
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
-  const { id } = await params;                        // ← await
+  const { id } = await params;
   const localId = Number(id);
   if (isNaN(localId)) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
 
@@ -40,11 +40,10 @@ export async function POST(
   });
 
   const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/activar-cuenta?token=${inviteToken}`;
-  console.log(`✉️  REENVÍO INVITE para ${usuario.email}: ${inviteUrl}`);
 
   return NextResponse.json({
-    success: true,
-    email:   usuario.email,
-    ...(process.env.NODE_ENV !== "production" && { inviteUrl }),
+    success:   true,
+    email:     usuario.email,
+    inviteUrl,
   });
 }
