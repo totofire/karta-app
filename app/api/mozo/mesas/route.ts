@@ -20,6 +20,7 @@ export async function GET() {
               where: { estado: { not: "CANCELADO" } },
               include: {
                 items: {
+                  where: { estado: { not: "CANCELADO" } }, // 👈 FILTRAR ITEMS CANCELADOS
                   include: { producto: true },
                 },
               },
@@ -37,7 +38,6 @@ export async function GET() {
       const detalles: any[] = [];
 
       if (sesion) {
-        // Mapa para agrupar ítems iguales
         const mapa = new Map<number, any>();
         sesion.pedidos.forEach((p) => {
           p.items.forEach((item) => {
@@ -69,7 +69,7 @@ export async function GET() {
         horaInicio: sesion?.fechaInicio ?? null,
         sesionId: sesion?.id ?? null,
         solicitaCuenta: sesion?.solicitaCuenta ?? null,
-        metodoPago: sesion?.metodoPago ?? null, // 👈 agregar esto
+        metodoPago: sesion?.metodoPago ?? null,
         tokenEfimero: sesion?.tokenEfimero ?? null,
         detalles,
       };
@@ -79,7 +79,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       { error: "Error cargando mesas" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

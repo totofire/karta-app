@@ -1,11 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import useSWR from "swr";
 import toast from "react-hot-toast";
-import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle } from "lucide-react";
-
-
+import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle, Ban } from "lucide-react";
 
 const Reloj = ({ fecha }: { fecha: string }) => {
   const [hora, setHora] = useState<string>("");
@@ -42,7 +40,6 @@ const fetcher = (url: string) => fetch(url).then(async (res) => {
 });
 
 export default function CocinaPage() {
-  // 🔥 Sin refreshInterval — Supabase lo reemplaza
   const { data: pedidosRaw = [], mutate } = useSWR("/api/cocina", fetcher, {
     revalidateOnFocus: true,
     fallbackData: []
@@ -50,14 +47,83 @@ export default function CocinaPage() {
 
   const pedidos = Array.isArray(pedidosRaw) ? pedidosRaw : [];
 
-  // 🔥 Supabase Realtime — escucha cambios en Pedido
+  // Ref para rastrear cancelaciones hechas desde ESTE KDS (para no auto-notificar)
+  const canceladosPorAdmin = useRef<Set<number>>(new Set());
+
+  // Supabase Realtime — escucha cambios en Pedido
   useEffect(() => {
     const canal = supabase
       .channel("cambios-pedidos-cocina")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "Pedido" },
-        () => mutate() // revalida SWR cuando hay cambio
+        (payload) => {
+          const newRecord = payload.new as { id?: number; estado?: string; impreso?: boolean };
+          const oldRecord = payload.old as { id?: number; estado?: string; impreso?: boolean };
+
+          // Detectar cancelación que NO hizo este KDS
+          if (
+            payload.eventType === "UPDATE" &&
+            newRecord.estado === "CANCELADO" &&
+            oldRecord.estado !== "CANCELADO" &&
+            newRecord.id !== undefined &&
+            !canceladosPorAdmin.current.has(newRecord.id)
+          ) {
+            toast.custom((t) => (
+              <div
+                onClick={() => toast.dismiss(t.id)}
+                className={`${
+                  t.visible ? "animate-in fade-in slide-in-from-top-5" : "animate-out fade-out slide-out-to-top-5"
+                } max-w-sm w-full bg-white shadow-2xl rounded-2xl cursor-pointer pointer-events-auto ring-1 ring-red-200 border-l-4 border-red-500 overflow-hidden`}
+              >
+                <div className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <Ban size={20} className="text-red-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-black text-gray-900">Pedido cancelado</p>
+                    <p className="text-xs text-gray-500 mt-0.5">El cliente canceló un pedido</p>
+                  </div>
+                </div>
+              </div>
+            ), { duration: 6000, position: "top-center" });
+          }
+
+          // Detectar cambio parcial (items cancelados pero pedido sigue)
+          if (
+            payload.eventType === "UPDATE" &&
+            newRecord.estado === "PENDIENTE" &&
+            oldRecord.impreso === true &&
+            newRecord.impreso === false &&
+            newRecord.id !== undefined &&
+            !canceladosPorAdmin.current.has(newRecord.id)
+          ) {
+            toast.custom((t) => (
+              <div
+                onClick={() => toast.dismiss(t.id)}
+                className={`${
+                  t.visible ? "animate-in fade-in slide-in-from-top-5" : "animate-out fade-out slide-out-to-top-5"
+                } max-w-sm w-full bg-white shadow-2xl rounded-2xl cursor-pointer pointer-events-auto ring-1 ring-amber-200 border-l-4 border-amber-500 overflow-hidden`}
+              >
+                <div className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <AlertCircle size={20} className="text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-black text-gray-900">Comanda modificada</p>
+                    <p className="text-xs text-gray-500 mt-0.5">El cliente canceló algunos ítems</p>
+                  </div>
+                </div>
+              </div>
+            ), { duration: 5000, position: "top-center" });
+          }
+
+          if (newRecord.id !== undefined) {
+            canceladosPorAdmin.current.delete(newRecord.id);
+          }
+
+          mutate();
+        }
       )
       .subscribe();
 
@@ -141,6 +207,9 @@ export default function CocinaPage() {
   const cancelarPedido = async (pedidoId: number) => {
     if (!confirm("¿Estás seguro de cancelar este pedido?")) return;
 
+    // Marcar que ESTE admin lo canceló → no mostrar toast de "cliente canceló"
+    canceladosPorAdmin.current.add(pedidoId);
+
     const pedidosRestantes = pedidos.filter((p: any) => p.id !== pedidoId);
     mutate(pedidosRestantes, false);
 
@@ -161,8 +230,6 @@ export default function CocinaPage() {
     );
   };
 
-  
-
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6 w-full max-w-[100vw] overflow-x-hidden">
       
@@ -182,10 +249,10 @@ export default function CocinaPage() {
         </div>
         
         <div className="flex gap-4">
-            <div className="bg-slate-800 px-6 py-2 rounded-xl border border-slate-700 text-center shadow-sm">
-                <span className="block text-3xl font-black text-white">{pedidos.length}</span>
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Pendientes</span>
-            </div>
+          <div className="bg-slate-800 px-6 py-2 rounded-xl border border-slate-700 text-center shadow-sm">
+            <span className="block text-3xl font-black text-white">{pedidos.length}</span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Pendientes</span>
+          </div>
         </div>
       </header>
 
@@ -206,21 +273,19 @@ export default function CocinaPage() {
                 ${p.impreso ? "bg-gray-200 border-2 border-slate-600" : "bg-white border-l-8 border-red-500"}
               `}
             >
-              
               {/* CABECERA TICKET */}
               <div className="p-4 border-b border-dashed border-gray-300 flex justify-between items-start bg-gray-50">
                 <div>
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
                     Mesa {p.sesion.mesa.nombre}
                   </h3>
-                  {/* ❌ ELIMINADO EL NOMBRE DEL CLIENTE DE AQUÍ */}
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                   <TiempoTranscurrido fecha={p.fecha} />
-                   <div className="flex items-center gap-1 text-slate-400 text-xs font-mono">
-                      <Clock size={10} />
-                      <Reloj fecha={p.fecha} />
-                   </div>
+                  <TiempoTranscurrido fecha={p.fecha} />
+                  <div className="flex items-center gap-1 text-slate-400 text-xs font-mono">
+                    <Clock size={10} />
+                    <Reloj fecha={p.fecha} />
+                  </div>
                 </div>
               </div>
 
@@ -232,15 +297,15 @@ export default function CocinaPage() {
                       {item.cantidad}
                     </span>
                     <div className="flex-1 pt-0.5">
-                        <p className="font-bold text-lg text-slate-800 leading-tight">
-                          {item.producto.nombre}
-                        </p>
-                        {item.observaciones && (
-                          <div className="flex items-start gap-1 mt-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100">
-                            <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-                            {item.observaciones}
-                          </div>
-                        )}
+                      <p className="font-bold text-lg text-slate-800 leading-tight">
+                        {item.producto.nombre}
+                      </p>
+                      {item.observaciones && (
+                        <div className="flex items-start gap-1 mt-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100">
+                          <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                          {item.observaciones}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -248,8 +313,6 @@ export default function CocinaPage() {
 
               {/* FOOTER ACCIONES */}
               <div className="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
-                
-                {/* BOTÓN IMPRIMIR (Secundario) */}
                 <button 
                   onClick={() => imprimirComanda(p)}
                   className="p-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors"
@@ -258,22 +321,20 @@ export default function CocinaPage() {
                   <Printer size={20} />
                 </button>
 
-                {/* BOTÓN CANCELAR (Secundario Rojo) */}
                 <button 
-                    onClick={() => cancelarPedido(p.id)}
-                    className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                    title="Cancelar Pedido"
+                  onClick={() => cancelarPedido(p.id)}
+                  className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                  title="Cancelar Pedido"
                 >
-                    <XCircle size={20} />
+                  <XCircle size={20} />
                 </button>
 
-                {/* BOTÓN LISTO (Primario - Slate) */}
                 <button 
-                    onClick={() => despacharCocina(p.id)} 
-                    className="flex-1 bg-slate-900 hover:bg-green-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide group"
+                  onClick={() => despacharCocina(p.id)} 
+                  className="flex-1 bg-slate-900 hover:bg-green-600 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all text-sm tracking-wide group"
                 >
-                    <CheckCircle2 size={18} className="group-hover:scale-110 transition-transform"/>
-                    LISTO
+                  <CheckCircle2 size={18} className="group-hover:scale-110 transition-transform"/>
+                  LISTO
                 </button>
               </div>
 
@@ -283,7 +344,6 @@ export default function CocinaPage() {
                   IMPRESA
                 </div>
               )}
-
             </div>
           ))}
         </div>

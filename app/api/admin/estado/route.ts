@@ -4,6 +4,13 @@ import { getLocalId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+interface DetalleItem {
+  producto: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
 export async function GET() {
   const localId = await getLocalId();
   if (!localId)
@@ -34,6 +41,7 @@ export async function GET() {
                 fecha: true,
                 estado: true,
                 items: {
+                  where: { estado: { not: "CANCELADO" } },
                   select: {
                     cantidad: true,
                     precio: true,
@@ -61,18 +69,11 @@ export async function GET() {
         ultimoPedido: null,
         detalles: [],
         solicitaCuenta: null,
+        metodoPago: null,
       };
 
       if (sesionActiva) {
-        const mapaDetalles = new Map<
-          string,
-          {
-            producto: string;
-            cantidad: number;
-            precioUnitario: number;
-            subtotal: number;
-          }
-        >();
+        const mapaDetalles = new Map<string, DetalleItem>();
         let totalGeneral = 0;
 
         for (const pedido of sesionActiva.pedidos) {
@@ -110,9 +111,9 @@ export async function GET() {
           horaInicio: sesionActiva.fechaInicio,
           totalActual: totalGeneral,
           ultimoPedido,
-          detalles: detalles,
+          detalles,
           solicitaCuenta: sesionActiva.solicitaCuenta,
-          metodoPago: sesionActiva.metodoPago ?? null, // 👈 agregar esta línea
+          metodoPago: sesionActiva.metodoPago ?? null,
         };
       }
 
@@ -132,7 +133,7 @@ export async function GET() {
     console.error(error);
     return NextResponse.json(
       { error: "Error obteniendo estado" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -1,13 +1,17 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus, ShoppingCart, Clock, Flame, Loader2 } from "lucide-react";
+import {
+  Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus,
+  ShoppingCart, Clock, Flame, Loader2, XCircle, Check,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
-
+const MINUTOS_CANCELACION = 3;
 
 interface ItemCarrito {
-  id: string; // UUID único para diferenciar items
+  id: string;
   productoId: number;
   nombre: string;
   precio: number;
@@ -16,8 +20,35 @@ interface ItemCarrito {
   imagen?: string;
 }
 
+// ── Countdown para cancelación ──────────────────────────────────────────────
+function Countdown({ fecha, onExpire }: { fecha: string; onExpire: () => void }) {
+  const [segundos, setSegundos] = useState(0);
+  const onExpireStable = useCallback(onExpire, []);
+
+  useEffect(() => {
+    const calcular = () => {
+      const limite = new Date(fecha).getTime() + MINUTOS_CANCELACION * 60000;
+      const restante = Math.max(0, Math.floor((limite - Date.now()) / 1000));
+      setSegundos(restante);
+      if (restante <= 0) onExpireStable();
+    };
+    calcular();
+    const id = setInterval(calcular, 1000);
+    return () => clearInterval(id);
+  }, [fecha, onExpireStable]);
+
+  const min = Math.floor(segundos / 60);
+  const seg = segundos % 60;
+
+  return (
+    <span className="font-black tabular-nums">
+      {min}:{String(seg).padStart(2, "0")}
+    </span>
+  );
+}
+
 export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo }: any) {
-  // --- ESTADOS ACTUALIZADOS ---
+  const router = useRouter();
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [verCuenta, setVerCuenta] = useState(false);
@@ -25,26 +56,101 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
   const [pidiendoCuenta, setPidiendoCuenta] = useState(false);
 
-  // 🆕 MODAL DE PERSONALIZACIÓN
+  // Modal producto
   const [modalProducto, setModalProducto] = useState<any>(null);
   const [cantidadModal, setCantidadModal] = useState(1);
   const [observacionesModal, setObservacionesModal] = useState("");
   const [metodoPagoSeleccionado, setMetodoPagoSeleccionado] = useState<"QR" | "TARJETA" | "EFECTIVO" | null>(null);
-  // --- LÓGICA DE AGRUPACIÓN DE CUENTA ---
+
+  // ── CANCELACIÓN ───────────────────────────────────────────────────────────
+  const [pedidosExpirados, setPedidosExpirados] = useState<Set<number>>(new Set());
+  const [cancelando, setCancelando] = useState(false);
+  const [modalCancelar, setModalCancelar] = useState<any>(null);
+  const [itemsSeleccionados, setItemsSeleccionados] = useState<Set<number>>(new Set());
+
+  const pedidosCancelables = useMemo(() => {
+    if (!pedidosHistoricos) return [];
+    return pedidosHistoricos.filter((p: any) => {
+      if (p.estado !== "PENDIENTE") return false;
+      if (pedidosExpirados.has(p.id)) return false;
+      const minutos = (Date.now() - new Date(p.fecha).getTime()) / 60000;
+      return minutos <= MINUTOS_CANCELACION;
+    });
+  }, [pedidosHistoricos, pedidosExpirados]);
+
+  const abrirModalCancelar = (pedido: any) => {
+    setModalCancelar(pedido);
+    setItemsSeleccionados(new Set());
+  };
+
+  const toggleItem = (itemId: number) => {
+    setItemsSeleccionados((prev) => {
+      const n = new Set(prev);
+      if (n.has(itemId)) n.delete(itemId);
+      else n.add(itemId);
+      return n;
+    });
+  };
+
+  const toggleTodos = () => {
+    if (!modalCancelar) return;
+    const vivos = modalCancelar.items.filter((i: any) => i.estado !== "CANCELADO");
+    if (itemsSeleccionados.size === vivos.length) {
+      setItemsSeleccionados(new Set());
+    } else {
+      setItemsSeleccionados(new Set(vivos.map((i: any) => i.id)));
+    }
+  };
+
+  const confirmarCancelacion = async () => {
+    if (!modalCancelar || itemsSeleccionados.size === 0) return;
+    setCancelando(true);
+    try {
+      const res = await fetch("/api/pedidos/cancelar-cliente", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenEfimero,
+          pedidoId: modalCancelar.id,
+          itemIds: Array.from(itemsSeleccionados),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const msg = data.pedidoCancelado
+          ? "Pedido cancelado"
+          : `${data.cancelados} producto${data.cancelados > 1 ? "s" : ""} cancelado${data.cancelados > 1 ? "s" : ""}`;
+        toast.success(msg);
+        setModalCancelar(null);
+        router.refresh();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "No se pudo cancelar");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setCancelando(false);
+    }
+  };
+
+  const marcarExpirado = useCallback((id: number) => {
+    setPedidosExpirados((prev) => new Set(prev).add(id));
+  }, []);
+
+  // ── AGRUPACIÓN DE CUENTA ──────────────────────────────────────────────────
   const { itemsHistoricos, totalHistorico } = useMemo(() => {
     const mapa = new Map();
     let total = 0;
-
     if (!pedidosHistoricos) return { itemsHistoricos: [], totalHistorico: 0 };
-
     pedidosHistoricos
       .filter((p: any) => p.estado !== "CANCELADO")
       .forEach((pedido: any) => {
         pedido.items.forEach((item: any) => {
+          if (item.estado === "CANCELADO") return;
           const key = item.producto.id;
           const subtotal = item.precio * item.cantidad;
           total += subtotal;
-
           if (mapa.has(key)) {
             const existente = mapa.get(key);
             existente.cantidad += item.cantidad;
@@ -54,305 +160,249 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               nombre: item.producto.nombre,
               cantidad: item.cantidad,
               precio: item.precio,
-              subtotal: subtotal
+              subtotal,
             });
           }
         });
       });
-
-    return {
-      itemsHistoricos: Array.from(mapa.values()),
-      totalHistorico: total
-    };
+    return { itemsHistoricos: Array.from(mapa.values()), totalHistorico: total };
   }, [pedidosHistoricos]);
 
-  // --- SOLICITAR CUENTA ---
-const pedirCuenta = async () => {
-  if (!metodoPagoSeleccionado) return;
-  setPidiendoCuenta(true);
-  try {
-    const res = await fetch("/api/pedidos/cuenta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado }),
-    });
-
-    if (!res.ok) { toast.error("Error al solicitar cuenta"); return; }
-
-    if (metodoPagoSeleccionado === "QR") {
-      toast.loading("Generando link de pago...");
-      const mpRes = await fetch("/api/mp/pagar", {
+  // ── SOLICITAR CUENTA ──────────────────────────────────────────────────────
+  const pedirCuenta = async () => {
+    if (!metodoPagoSeleccionado) return;
+    setPidiendoCuenta(true);
+    try {
+      const res = await fetch("/api/pedidos/cuenta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokenEfimero }),
+        body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado }),
       });
-      toast.dismiss();
+      if (!res.ok) { toast.error("Error al solicitar cuenta"); return; }
 
-      if (mpRes.ok) {
-        const { checkoutUrl } = await mpRes.json();
-        setVerCuenta(false);
-        window.location.href = checkoutUrl;
-        return;
+      if (metodoPagoSeleccionado === "QR") {
+        toast.loading("Generando link de pago...");
+        const mpRes = await fetch("/api/mp/pagar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tokenEfimero }),
+        });
+        toast.dismiss();
+        if (mpRes.ok) {
+          const { checkoutUrl } = await mpRes.json();
+          setVerCuenta(false);
+          window.location.href = checkoutUrl;
+          return;
+        }
+        const err = await mpRes.json();
+        if (!err.error?.includes("no tiene Mercado Pago")) {
+          toast.error(err.error || "Error al generar el pago");
+          return;
+        }
+        toast.success("¡Listo! El encargado se acerca a cobrarte 📱");
+      } else {
+        const mensajes = {
+          TARJETA: "¡Listo! El encargado ya sabe que pagás con tarjeta 💳",
+          EFECTIVO: "¡Listo! El encargado se acerca a cobrarte 💵",
+        };
+        toast.success(mensajes[metodoPagoSeleccionado as "TARJETA" | "EFECTIVO"]);
       }
+      setVerCuenta(false);
+      setMetodoPagoSeleccionado(null);
+    } catch { toast.error("Error de conexión"); }
+    finally { setPidiendoCuenta(false); }
+  };
 
-      // MP no configurado → el admin lo cierra manualmente
-      const err = await mpRes.json();
-      if (!err.error?.includes("no tiene Mercado Pago")) {
-        toast.error(err.error || "Error al generar el pago");
-        return;
-      }
-
-      toast.success("¡Listo! El encargado se acerca a cobrarte 📱");
-    } else {
-      const mensajes = {
-        TARJETA:  "¡Listo! El encargado ya sabe que pagás con tarjeta 💳",
-        EFECTIVO: "¡Listo! El encargado se acerca a cobrarte 💵",
-      };
-      toast.success(mensajes[metodoPagoSeleccionado as "TARJETA" | "EFECTIVO"]);
-    }
-
-    setVerCuenta(false);
-    setMetodoPagoSeleccionado(null);
-
-  } catch {
-    toast.error("Error de conexión");
-  } finally {
-    setPidiendoCuenta(false);
-  }
-};
-
-  // --- SCROLL A CATEGORÍA ---
+  // ── SCROLL A CATEGORÍA ────────────────────────────────────────────────────
   const scrollearACategoria = (catId: number) => {
     setCategoriaActiva(catId);
     const elemento = document.getElementById(`cat-${catId}`);
-    
     if (elemento) {
-      const headerOffset = 130; 
+      const headerOffset = 130;
       const elementPosition = elemento.getBoundingClientRect().top;
       const offsetPosition = elementPosition + window.scrollY - headerOffset;
-  
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth"
-      });
+      window.scrollTo({ top: offsetPosition, behavior: "smooth" });
     }
   };
 
-  // 🆕 ABRIR MODAL DE PRODUCTO
+  // ── MODAL PRODUCTO ────────────────────────────────────────────────────────
   const abrirModalProducto = (producto: any) => {
     setModalProducto(producto);
     setCantidadModal(1);
     setObservacionesModal("");
   };
-
   const cerrarModalProducto = () => {
     setModalProducto(null);
     setCantidadModal(1);
     setObservacionesModal("");
   };
-
-  // 🆕 AGREGAR AL CARRITO DESDE MODAL
   const agregarAlCarrito = () => {
     if (!modalProducto) return;
-
     const nuevoItem: ItemCarrito = {
-      id: `${modalProducto.id}-${Date.now()}-${Math.random()}`, // UUID único
+      id: `${modalProducto.id}-${Date.now()}-${Math.random()}`,
       productoId: modalProducto.id,
       nombre: modalProducto.nombre,
       precio: modalProducto.precio,
       cantidad: cantidadModal,
       observaciones: observacionesModal.trim(),
-      imagen: modalProducto.imagen
+      imagen: modalProducto.imagen,
     };
-
-    setCarrito(prev => [...prev, nuevoItem]);
+    setCarrito((prev) => [...prev, nuevoItem]);
     toast.success(`${modalProducto.nombre} agregado al carrito`);
     cerrarModalProducto();
   };
-
-  // 🆕 ELIMINAR ITEM DEL CARRITO
   const eliminarDelCarrito = (itemId: string) => {
-    setCarrito(prev => prev.filter(item => item.id !== itemId));
+    setCarrito((prev) => prev.filter((item) => item.id !== itemId));
   };
-
-  // 🆕 EDITAR CANTIDAD DE ITEM EN CARRITO
   const editarCantidadCarrito = (itemId: string, nuevaCantidad: number) => {
-    if (nuevaCantidad < 1) {
-      eliminarDelCarrito(itemId);
-      return;
-    }
-    setCarrito(prev => prev.map(item => 
-      item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item
-    ));
+    if (nuevaCantidad < 1) { eliminarDelCarrito(itemId); return; }
+    setCarrito((prev) => prev.map((item) => (item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item)));
   };
 
-  // --- CÁLCULOS DEL CARRITO ---
+  // ── CÁLCULOS DEL CARRITO ──────────────────────────────────────────────────
   const totalItems = carrito.reduce((acc, item) => acc + item.cantidad, 0);
-  const precioTotal = carrito.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+  const precioTotal = carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0);
 
-  // --- ENVIAR PEDIDO ---
+  // ── ENVIAR PEDIDO ─────────────────────────────────────────────────────────
   const confirmarPedido = async () => {
     setEnviando(true);
-
-    // Transformar carrito al formato que espera el backend
-    const productos = carrito.map(item => ({
+    const productos = carrito.map((item) => ({
       productoId: item.productoId,
       cantidad: item.cantidad,
-      observaciones: item.observaciones || undefined
+      observaciones: item.observaciones || undefined,
     }));
-
     try {
       const res = await fetch("/api/pedidos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          tokenEfimero: tokenEfimero,
-          nombreCliente: null,
-          productos: productos
-        }),
+        body: JSON.stringify({ tokenEfimero, nombreCliente: null, productos }),
       });
-
       if (res.ok) {
         toast.success("¡Pedido enviado a cocina! 👨‍🍳");
-        window.location.reload(); 
+        setCarrito([]);
+        setEnviando(false);
+        router.refresh();
       } else {
         const data = await res.json();
         toast.error(data.error || "Error al pedir");
         setEnviando(false);
       }
-    } catch (error) {
-      toast.error("Error de conexión");
-      setEnviando(false);
-    }
+    } catch { toast.error("Error de conexión"); setEnviando(false); }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
-      
-      {/* --- HEADER --- */}
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <header className="bg-gradient-to-br from-red-600 to-red-700 text-white shadow-xl sticky top-0 z-20">
-        <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]"> 
-          
+        <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]">
           <div className="flex items-center gap-2 h-full">
             {esMozo && (
-              <button 
-                onClick={() => window.location.href = "/mozo"}
-                className="mr-2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
-              >
+              <button onClick={() => (window.location.href = "/mozo")} className="mr-2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors">
                 <ArrowLeft size={20} />
               </button>
             )}
             <div className="relative w-24 h-full min-h-[50px] drop-shadow-md">
-              <Image 
-                src="/karta-logo.png" 
-                alt="Logo" 
-                fill
-                sizes="(max-width: 768px) 100px, 150px"
-                className="object-contain object-left" 
-                priority
-              />
+              <Image src="/karta-logo.png" alt="Logo" fill sizes="(max-width: 768px) 100px, 150px" className="object-contain object-left" priority />
             </div>
           </div>
-
           <div className="flex items-center gap-3">
-            {/* BOTÓN VER CUENTA */}
             {itemsHistoricos.length > 0 && (
-              <button 
-                onClick={() => setVerCuenta(true)}
-                className="flex flex-col items-center justify-center bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg transition-colors border border-white/10 backdrop-blur-sm active:scale-95"
-              >
+              <button onClick={() => setVerCuenta(true)} className="flex flex-col items-center justify-center bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg transition-colors border border-white/10 backdrop-blur-sm active:scale-95">
                 <Receipt size={18} className="text-yellow-300 mb-0.5" />
                 <span className="text-[9px] font-bold uppercase tracking-wide text-yellow-50">Mi Cuenta</span>
               </button>
             )}
-
             <div className="flex flex-col items-end justify-center leading-none">
               <span className="text-[9px] font-semibold text-red-200 uppercase tracking-widest mb-0.5">Mesa</span>
-              <div className="bg-white/95 text-red-600 px-3 py-1 rounded-md font-black text-sm shadow-sm">
-                {mesa.nombre}
-              </div>
+              <div className="bg-white/95 text-red-600 px-3 py-1 rounded-md font-black text-sm shadow-sm">{mesa.nombre}</div>
             </div>
           </div>
         </div>
-
-        {/* BARRA DE CATEGORÍAS */}
         <div className="flex gap-2 overflow-x-auto py-2 px-3 scrollbar-hide bg-red-700/50 backdrop-blur-sm">
           {categorias.map((cat: any) => (
-            <button
-              key={cat.id}
-              onClick={() => scrollearACategoria(cat.id)}
-              className={`
-                px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border
-                ${categoriaActiva === cat.id 
-                  ? 'bg-white text-red-600 border-white shadow-sm' 
-                  : 'bg-black/10 text-white border-transparent hover:bg-black/20'}
-              `}
-            >
-              {cat.nombre}
-            </button>
+            <button key={cat.id} onClick={() => scrollearACategoria(cat.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
+                categoriaActiva === cat.id ? "bg-white text-red-600 border-white shadow-sm" : "bg-black/10 text-white border-transparent hover:bg-black/20"
+              }`}>{cat.nombre}</button>
           ))}
         </div>
       </header>
 
-      {/* --- LISTADO DE PRODUCTOS --- */}
+      {/* ── BANNER DE PEDIDOS CANCELABLES ───────────────────────────────────── */}
+      {pedidosCancelables.length > 0 && (
+        <div className="px-4 pt-3 space-y-2">
+          {pedidosCancelables.map((p: any) => {
+            const itemsVivos = p.items.filter((i: any) => i.estado !== "CANCELADO");
+            const itemsResumen = itemsVivos
+              .slice(0, 3)
+              .map((i: any) => `${i.cantidad}x ${i.producto.nombre}`)
+              .join(", ");
+            const masItems = itemsVivos.length > 3 ? ` +${itemsVivos.length - 3} más` : "";
+
+            return (
+              <div key={p.id} className="bg-white border border-amber-200 rounded-2xl p-3.5 shadow-sm animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">
+                      {itemsResumen}
+                      {masItems && <span className="text-gray-400">{masItems}</span>}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Clock size={12} className="text-amber-500" />
+                      <span className="text-xs text-amber-600">
+                        Podés cancelar en <Countdown fecha={p.fecha} onExpire={() => marcarExpirado(p.id)} />
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => abrirModalCancelar(p)}
+                    className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold px-3 py-2.5 rounded-xl active:scale-95 transition-all border border-red-100 shrink-0"
+                  >
+                    <XCircle size={14} />
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── LISTADO DE PRODUCTOS ───────────────────────────────────────────── */}
       <main className="p-4 space-y-8">
         {categorias.map((cat: any) => (
-          <section 
-            key={cat.id} 
-            id={`cat-${cat.id}`}
-            className="scroll-mt-32"
-          >
+          <section key={cat.id} id={`cat-${cat.id}`} className="scroll-mt-32">
             <div className="flex items-center gap-2 mb-4 sticky top-[120px] bg-gray-50/95 backdrop-blur-sm p-2 z-10 -mx-2 rounded-lg">
               <div className="h-6 w-1 bg-red-600 rounded-full"></div>
               <h2 className="text-xl font-bold text-gray-800">{cat.nombre}</h2>
             </div>
-            
             <div className="grid gap-3">
               {cat.productos.map((prod: any) => (
-                <div 
-                  key={prod.id} 
-                  onClick={() => abrirModalProducto(prod)}
-                  className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-row gap-3 relative overflow-hidden group hover:shadow-md transition-all h-[120px] cursor-pointer active:scale-[0.98]"
-                >
-                  
-                  {/* Decoración Hover */}
+                <div key={prod.id} onClick={() => abrirModalProducto(prod)}
+                  className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-row gap-3 relative overflow-hidden group hover:shadow-md transition-all h-[120px] cursor-pointer active:scale-[0.98]">
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-600 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity z-10"></div>
-                  
-                  {/* --- FOTO DEL PRODUCTO --- */}
                   <div className="relative w-[100px] h-full flex-shrink-0 bg-gray-50 rounded-xl overflow-hidden">
                     {prod.imagen ? (
-                      <Image 
-                        src={prod.imagen} 
-                        alt={prod.nombre} 
-                        fill 
-                        className="object-cover" 
-                        sizes="(max-width: 768px) 100px, 150px"
-                      />
+                      <Image src={prod.imagen} alt={prod.nombre} fill className="object-cover" sizes="(max-width: 768px) 100px, 150px" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                       </div>
                     )}
                   </div>
-
-                  {/* --- INFORMACIÓN --- */}
                   <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
-                    
                     <div>
                       <h3 className="font-bold text-sm text-gray-900 leading-tight truncate pr-1">{prod.nombre}</h3>
                       <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
                         {prod.descripcion || <span className="italic opacity-50">Sin descripción</span>}
                       </p>
                     </div>
-
                     <div className="flex items-end justify-between mt-1">
                       <span className="text-lg font-black text-red-600">${prod.precio}</span>
-                      <div className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase">
-                        Tocar para agregar
-                      </div>
+                      <div className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase">Tocar para agregar</div>
                     </div>
                   </div>
-
                 </div>
               ))}
             </div>
@@ -360,169 +410,94 @@ const pedirCuenta = async () => {
         ))}
       </main>
 
-      {/* --- FOOTER FLOTANTE (CARRITO) --- */}
-{totalItems > 0 && (
-  <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
-    <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
-      <div className="flex justify-between items-center mb-3">
-        <button
-          onClick={() => setVerCarrito(true)}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-        >
-          <ShoppingCart size={20} />
-          <div>
-            <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold block">Carrito</span>
-            <span className="text-sm font-medium">{totalItems} {totalItems === 1 ? 'ítem' : 'ítems'}</span>
+      {/* ── FOOTER FLOTANTE (CARRITO) ──────────────────────────────────────── */}
+      {totalItems > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent p-4 z-30 animate-in slide-in-from-bottom-4">
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-2xl border border-gray-100 p-4">
+            <div className="flex justify-between items-center mb-3">
+              <button onClick={() => setVerCarrito(true)} className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors">
+                <ShoppingCart size={20} />
+                <div>
+                  <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold block">Carrito</span>
+                  <span className="text-sm font-medium">{totalItems} {totalItems === 1 ? "ítem" : "ítems"}</span>
+                </div>
+              </button>
+              <span className="text-3xl font-black bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent">${precioTotal}</span>
+            </div>
+            <button onClick={confirmarPedido} disabled={enviando}
+              className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg">
+              {enviando ? (<><Loader2 size={20} className="animate-spin" /> ENVIANDO...</>) : (<><Flame size={20} /> ENVIAR A COCINA</>)}
+            </button>
+            <div className="flex items-center justify-center gap-1.5 mt-2">
+              <Clock size={12} className="text-amber-500" />
+              <p className="text-center text-xs text-amber-500 font-bold uppercase tracking-wide">Tu pedido aún no fue enviado</p>
+            </div>
           </div>
-        </button>
-        <span className="text-3xl font-black bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent">
-          ${precioTotal}
-        </span>
-      </div>
-      
-      <button 
-        onClick={confirmarPedido}
-        disabled={enviando}
-        className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
-      >
-        {enviando ? (
-          <>
-            <Loader2 size={20} className="animate-spin" />
-            ENVIANDO...
-          </>
-        ) : (
-          <>
-            <Flame size={20} />
-            ENVIAR A COCINA
-          </>
-        )}
-      </button>
+        </div>
+      )}
 
-      {/* Aviso de pedido pendiente */}
-      <div className="flex items-center justify-center gap-1.5 mt-2">
-        <Clock size={12} className="text-amber-500" />
-        <p className="text-center text-xs text-amber-500 font-bold uppercase tracking-wide">
-          Tu pedido aún no fue enviado
-        </p>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* 🆕 MODAL DE PRODUCTO */}
+      {/* ── MODAL DE PRODUCTO ──────────────────────────────────────────────── */}
       {modalProducto && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 max-h-[90vh] flex flex-col">
-            
-            {/* Imagen del producto */}
             <div className="relative w-full h-64 bg-gray-100 flex-shrink-0">
               {modalProducto.imagen ? (
-                <Image 
-                  src={modalProducto.imagen} 
-                  alt={modalProducto.nombre} 
-                  fill 
-                  className="object-cover" 
-                />
+                <Image src={modalProducto.imagen} alt={modalProducto.nombre} fill className="object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300">
                   <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                 </div>
               )}
-              <button 
-                onClick={cerrarModalProducto}
-                className="absolute top-3 right-3 bg-black/50 hover:bg-black/70 p-2 rounded-full transition-colors backdrop-blur-sm"
-              >
+              <button onClick={cerrarModalProducto} className="absolute top-3 right-3 bg-black/50 hover:bg-black/70 p-2 rounded-full transition-colors backdrop-blur-sm">
                 <X size={20} className="text-white" />
               </button>
             </div>
-
-            {/* Contenido scrolleable */}
             <div className="p-6 overflow-y-auto flex-1">
               <h2 className="text-2xl font-black text-gray-900 mb-2">{modalProducto.nombre}</h2>
               <p className="text-3xl font-black text-red-600 mb-4">${modalProducto.precio}</p>
-              
-              {modalProducto.descripcion && (
-                <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                  {modalProducto.descripcion}
-                </p>
-              )}
-
-              {/* Selector de cantidad */}
+              {modalProducto.descripcion && <p className="text-gray-600 text-sm mb-6 leading-relaxed">{modalProducto.descripcion}</p>}
               <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">
-                  Cantidad
-                </label>
+                <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Cantidad</label>
                 <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  <button 
-                    onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
-                    className="w-10 h-10 bg-white text-gray-600 font-bold rounded-lg shadow-sm active:scale-95 flex items-center justify-center border border-gray-200 hover:bg-gray-100 transition-colors"
-                  >
-                    <Minus size={20} />
-                  </button>
+                  <button onClick={() => setCantidadModal(Math.max(1, cantidadModal - 1))}
+                    className="w-10 h-10 bg-white text-gray-600 font-bold rounded-lg shadow-sm active:scale-95 flex items-center justify-center border border-gray-200 hover:bg-gray-100 transition-colors"><Minus size={20} /></button>
                   <span className="font-black text-2xl text-gray-800 flex-1 text-center">{cantidadModal}</span>
-                  <button 
-                    onClick={() => setCantidadModal(cantidadModal + 1)}
-                    className="w-10 h-10 bg-white text-red-600 font-bold rounded-lg shadow-sm active:scale-95 flex items-center justify-center border border-red-100 hover:bg-red-50 transition-colors"
-                  >
-                    <Plus size={20} />
-                  </button>
+                  <button onClick={() => setCantidadModal(cantidadModal + 1)}
+                    className="w-10 h-10 bg-white text-red-600 font-bold rounded-lg shadow-sm active:scale-95 flex items-center justify-center border border-red-100 hover:bg-red-50 transition-colors"><Plus size={20} /></button>
                 </div>
               </div>
-
-              {/* Observaciones */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">
                   Observaciones <span className="text-gray-400 font-normal text-xs">(Opcional)</span>
                 </label>
-                <textarea
-                  value={observacionesModal}
-                  onChange={(e) => setObservacionesModal(e.target.value)}
+                <textarea value={observacionesModal} onChange={(e) => setObservacionesModal(e.target.value)}
                   placeholder="Ej: Sin cebolla, punto medio, sin sal..."
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
-                  rows={3}
-                  maxLength={200}
-                />
-                <p className="text-xs text-gray-400 mt-1 text-right">
-                  {observacionesModal.length}/200
-                </p>
+                  rows={3} maxLength={200} />
+                <p className="text-xs text-gray-400 mt-1 text-right">{observacionesModal.length}/200</p>
               </div>
             </div>
-
-            {/* Footer fijo */}
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-              <button
-                onClick={agregarAlCarrito}
-                className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 flex items-center justify-center gap-2 text-lg"
-              >
-                <Plus size={20} />
-                AGREGAR AL CARRITO
+              <button onClick={agregarAlCarrito}
+                className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 flex items-center justify-center gap-2 text-lg">
+                <Plus size={20} /> AGREGAR AL CARRITO
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🆕 MODAL DEL CARRITO */}
+      {/* ── MODAL DEL CARRITO ──────────────────────────────────────────────── */}
       {verCarrito && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 max-h-[80vh] flex flex-col">
-            
             <div className="bg-slate-900 text-white p-5 flex justify-between items-center flex-shrink-0">
               <div>
-                <h3 className="font-black text-xl flex items-center gap-2">
-                  <ShoppingCart size={22} />
-                  Tu Carrito
-                </h3>
+                <h3 className="font-black text-xl flex items-center gap-2"><ShoppingCart size={22} /> Tu Carrito</h3>
                 <p className="text-slate-400 text-xs mt-1 font-medium">{totalItems} productos</p>
               </div>
-              <button 
-                onClick={() => setVerCarrito(false)}
-                className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setVerCarrito(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
-
             <div className="p-5 overflow-y-auto flex-1">
               {carrito.length === 0 ? (
                 <div className="text-center py-10 text-gray-400">
@@ -535,9 +510,7 @@ const pedirCuenta = async () => {
                     <div key={item.id} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                       <div className="flex gap-3 mb-3">
                         <div className="relative w-16 h-16 bg-white rounded-lg overflow-hidden flex-shrink-0">
-                          {item.imagen ? (
-                            <Image src={item.imagen} alt={item.nombre} fill className="object-cover" />
-                          ) : (
+                          {item.imagen ? (<Image src={item.imagen} alt={item.nombre} fill className="object-cover" />) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-300">
                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                             </div>
@@ -546,169 +519,259 @@ const pedirCuenta = async () => {
                         <div className="flex-1 min-w-0">
                           <h4 className="font-bold text-sm text-gray-900 truncate">{item.nombre}</h4>
                           <p className="text-red-600 font-black text-lg">${item.precio * item.cantidad}</p>
-                          {item.observaciones && (
-                            <p className="text-xs text-gray-500 italic mt-1 line-clamp-2">
-                              "{item.observaciones}"
-                            </p>
-                          )}
+                          {item.observaciones && <p className="text-xs text-gray-500 italic mt-1 line-clamp-2">"{item.observaciones}"</p>}
                         </div>
                       </div>
-
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-gray-200">
-                          <button 
-                            onClick={() => editarCantidadCarrito(item.id, item.cantidad - 1)}
-                            className="w-8 h-8 bg-gray-100 text-gray-600 font-bold rounded-md active:scale-95 flex items-center justify-center hover:bg-gray-200 transition-colors"
-                          >
-                            <Minus size={16} />
-                          </button>
+                          <button onClick={() => editarCantidadCarrito(item.id, item.cantidad - 1)}
+                            className="w-8 h-8 bg-gray-100 text-gray-600 font-bold rounded-md active:scale-95 flex items-center justify-center hover:bg-gray-200 transition-colors"><Minus size={16} /></button>
                           <span className="font-black text-gray-800 text-sm min-w-[20px] text-center">{item.cantidad}</span>
-                          <button 
-                            onClick={() => editarCantidadCarrito(item.id, item.cantidad + 1)}
-                            className="w-8 h-8 bg-red-50 text-red-600 font-bold rounded-md active:scale-95 flex items-center justify-center hover:bg-red-100 transition-colors"
-                          >
-                            <Plus size={16} />
-                          </button>
+                          <button onClick={() => editarCantidadCarrito(item.id, item.cantidad + 1)}
+                            className="w-8 h-8 bg-red-50 text-red-600 font-bold rounded-md active:scale-95 flex items-center justify-center hover:bg-red-100 transition-colors"><Plus size={16} /></button>
                         </div>
-                        
-                        <button
-                          onClick={() => eliminarDelCarrito(item.id)}
-                          className="text-red-500 hover:text-red-700 text-sm font-bold uppercase tracking-wide transition-colors"
-                        >
-                          Eliminar
-                        </button>
+                        <button onClick={() => eliminarDelCarrito(item.id)} className="text-red-500 hover:text-red-700 text-sm font-bold uppercase tracking-wide transition-colors">Eliminar</button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex justify-between items-baseline mb-4">
                 <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Total</span>
                 <span className="text-3xl font-black text-slate-900">${precioTotal}</span>
               </div>
-              <button 
-                onClick={() => setVerCarrito(false)}
-                className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300"
+              <button onClick={() => setVerCarrito(false)}
+                className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300">CONTINUAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── MODAL CANCELAR PEDIDO (SELECCIÓN DE ÍTEMS) ─────────────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {modalCancelar && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 max-h-[85vh] flex flex-col">
+
+            {/* Header */}
+            <div className="bg-red-600 text-white p-5 flex justify-between items-center flex-shrink-0">
+              <div>
+                <h3 className="font-black text-lg flex items-center gap-2">
+                  <XCircle size={20} />
+                  ¿Qué querés cancelar?
+                </h3>
+                <p className="text-red-200 text-xs mt-1 font-medium">
+                  Seleccioná los productos que no querés
+                </p>
+              </div>
+              <button onClick={() => setModalCancelar(null)} className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Countdown en el modal */}
+            <div className="bg-amber-50 px-5 py-2.5 flex items-center justify-center gap-2 border-b border-amber-100">
+              <Clock size={14} className="text-amber-600" />
+              <span className="text-xs text-amber-700 font-bold">
+                Tiempo restante: <Countdown fecha={modalCancelar.fecha} onExpire={() => { setModalCancelar(null); toast.error("Se acabó el tiempo para cancelar"); }} />
+              </span>
+            </div>
+
+            {/* Seleccionar todos */}
+            {(() => {
+              const itemsVivos = modalCancelar.items.filter((i: any) => i.estado !== "CANCELADO");
+              const todosSeleccionados = itemsSeleccionados.size === itemsVivos.length && itemsVivos.length > 0;
+              return (
+                <div className="px-5 pt-4 pb-2">
+                  <button onClick={toggleTodos}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all active:scale-[0.98] ${
+                      todosSeleccionados
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-200 bg-gray-50 hover:border-gray-300"
+                    }`}>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                      todosSeleccionados ? "bg-red-600" : "bg-white border-2 border-gray-300"
+                    }`}>
+                      {todosSeleccionados && <Check size={14} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <span className={`text-sm font-bold ${todosSeleccionados ? "text-red-700" : "text-gray-600"}`}>
+                      Cancelar todo el pedido
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Lista de ítems */}
+            <div className="px-5 pb-4 overflow-y-auto flex-1">
+              <div className="space-y-2 mt-2">
+                {modalCancelar.items
+                  .filter((item: any) => item.estado !== "CANCELADO")
+                  .map((item: any) => {
+                    const seleccionado = itemsSeleccionados.has(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => toggleItem(item.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all active:scale-[0.98] ${
+                          seleccionado
+                            ? "border-red-400 bg-red-50"
+                            : "border-gray-100 bg-white hover:border-gray-200"
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
+                          seleccionado ? "bg-red-600" : "bg-white border-2 border-gray-300"
+                        }`}>
+                          {seleccionado && <Check size={14} className="text-white" strokeWidth={3} />}
+                        </div>
+
+                        {/* Info del ítem */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold text-sm leading-tight ${seleccionado ? "text-red-700 line-through" : "text-gray-800"}`}>
+                            {item.producto.nombre}
+                          </p>
+                          {item.observaciones && (
+                            <p className="text-xs text-gray-400 italic mt-0.5 truncate">"{item.observaciones}"</p>
+                          )}
+                        </div>
+
+                        {/* Cantidad + precio */}
+                        <div className="text-right shrink-0">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            seleccionado ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600"
+                          }`}>
+                            x{item.cantidad}
+                          </span>
+                          <p className={`text-sm font-black mt-0.5 ${seleccionado ? "text-red-600" : "text-gray-800"}`}>
+                            ${item.precio * item.cantidad}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Footer con resumen y botón confirmar */}
+            <div className="p-5 border-t border-gray-200 bg-gray-50 flex-shrink-0 space-y-3">
+              {itemsSeleccionados.size > 0 && (
+                <div className="flex justify-between items-baseline px-1">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    {itemsSeleccionados.size} producto{itemsSeleccionados.size > 1 ? "s" : ""} a cancelar
+                  </span>
+                  <span className="text-lg font-black text-red-600">
+                    -${modalCancelar.items
+                      .filter((i: any) => itemsSeleccionados.has(i.id))
+                      .reduce((acc: number, i: any) => acc + i.precio * i.cantidad, 0)}
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={confirmarCancelacion}
+                disabled={itemsSeleccionados.size === 0 || cancelando}
+                className={`w-full font-bold py-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-base ${
+                  itemsSeleccionados.size === 0
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : cancelando
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200"
+                }`}
               >
-                CONTINUAR
+                {cancelando ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <XCircle size={18} />
+                    {itemsSeleccionados.size === 0
+                      ? "Seleccioná al menos un producto"
+                      : "Confirmar cancelación"}
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setModalCancelar(null)}
+                className="w-full text-center text-sm text-gray-400 font-bold py-2 hover:text-gray-600 transition-colors"
+              >
+                No, volver al menú
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- MODAL MI CUENTA --- */}
-{verCuenta && (
-  <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-    <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10">
-      
-      {/* Header */}
-      <div className="bg-slate-900 text-white p-5 flex justify-between items-center relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none" />
-        <div className="relative z-10">
-          <h3 className="font-black text-xl flex items-center gap-2">
-            <Receipt size={22} className="text-yellow-400" />
-            Tu Consumo
-          </h3>
-          <p className="text-slate-400 text-xs mt-1 font-medium">
-            Mesa {mesa.nombre} · Resumen parcial
-          </p>
-        </div>
-        <button onClick={() => setVerCuenta(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors relative z-10">
-          <X size={20} />
-        </button>
-      </div>
-
-      {/* Items consumidos */}
-      <div className="p-5 max-h-[35vh] overflow-y-auto">
-        {itemsHistoricos.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            <p>Aún no has pedido nada.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {itemsHistoricos.map((item: any, idx: number) => (
-              <div key={idx} className="flex justify-between items-center border-b border-dashed border-gray-100 pb-3 last:border-0 last:pb-0">
-                <div className="flex gap-3 items-center">
-                  <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs shrink-0">
-                    {item.cantidad}
-                  </span>
-                  <p className="font-semibold text-gray-800 text-sm">{item.nombre}</p>
-                </div>
-                <span className="font-bold text-gray-900 text-sm">${item.subtotal}</span>
+      {/* ── MODAL MI CUENTA ────────────────────────────────────────────────── */}
+      {verCuenta && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10">
+            <div className="bg-slate-900 text-white p-5 flex justify-between items-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none" />
+              <div className="relative z-10">
+                <h3 className="font-black text-xl flex items-center gap-2">
+                  <Receipt size={22} className="text-yellow-400" /> Tu Consumo
+                </h3>
+                <p className="text-slate-400 text-xs mt-1 font-medium">Mesa {mesa.nombre} · Resumen parcial</p>
               </div>
-            ))}
+              <button onClick={() => setVerCuenta(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors relative z-10"><X size={20} /></button>
+            </div>
+            <div className="p-5 max-h-[35vh] overflow-y-auto">
+              {itemsHistoricos.length === 0 ? (
+                <div className="text-center py-8 text-gray-400"><p>Aún no has pedido nada.</p></div>
+              ) : (
+                <div className="space-y-3">
+                  {itemsHistoricos.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center border-b border-dashed border-gray-100 pb-3 last:border-0 last:pb-0">
+                      <div className="flex gap-3 items-center">
+                        <span className="bg-slate-100 text-slate-700 font-bold w-6 h-6 flex items-center justify-center rounded text-xs shrink-0">{item.cantidad}</span>
+                        <p className="font-semibold text-gray-800 text-sm">{item.nombre}</p>
+                      </div>
+                      <span className="font-bold text-gray-900 text-sm">${item.subtotal}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-between items-baseline">
+              <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Total</span>
+              <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
+            </div>
+            <div className="px-5 pb-5">
+              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">¿Cómo vas a pagar?</p>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {[
+                  { key: "QR", emoji: "📱", label: "QR / Digital" },
+                  { key: "TARJETA", emoji: "💳", label: "Tarjeta" },
+                  { key: "EFECTIVO", emoji: "💵", label: "Efectivo" },
+                ].map((metodo) => (
+                  <button key={metodo.key} onClick={() => setMetodoPagoSeleccionado(metodo.key as any)}
+                    className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all active:scale-95 font-bold text-xs ${
+                      metodoPagoSeleccionado === metodo.key
+                        ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                        : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
+                    }`}>
+                    <span className="text-2xl">{metodo.emoji}</span>
+                    {metodo.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={pedirCuenta} disabled={pidiendoCuenta || !metodoPagoSeleccionado}
+                className={`w-full font-bold py-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-base ${
+                  !metodoPagoSeleccionado ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : pidiendoCuenta ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
+                }`}>
+                {pidiendoCuenta ? <Loader2 size={18} className="animate-spin" /> : <><Receipt size={18} /> SOLICITAR CUENTA</>}
+              </button>
+              {!metodoPagoSeleccionado && <p className="text-center text-xs text-gray-400 mt-2">Seleccioná un método para continuar</p>}
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Total */}
-      <div className="px-5 py-3 border-t border-gray-100 flex justify-between items-baseline">
-        <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Total</span>
-        <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
-      </div>
-
-      {/* Selección de método de pago */}
-      <div className="px-5 pb-5">
-        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">
-          ¿Cómo vas a pagar?
-        </p>
-
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {[
-            { key: "QR",      emoji: "📱", label: "QR / Digital" },
-            { key: "TARJETA", emoji: "💳", label: "Tarjeta"      },
-            { key: "EFECTIVO",emoji: "💵", label: "Efectivo"     },
-          ].map((metodo) => (
-            <button
-              key={metodo.key}
-              onClick={() => setMetodoPagoSeleccionado(metodo.key as any)}
-              className={`
-                flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all active:scale-95 font-bold text-xs
-                ${metodoPagoSeleccionado === metodo.key
-                  ? "border-slate-900 bg-slate-900 text-white shadow-lg"
-                  : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
-                }
-              `}
-            >
-              <span className="text-2xl">{metodo.emoji}</span>
-              {metodo.label}
-            </button>
-          ))}
         </div>
-
-        <button
-          onClick={pedirCuenta}
-          disabled={pidiendoCuenta || !metodoPagoSeleccionado}
-          className={`
-            w-full font-bold py-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-base
-            ${!metodoPagoSeleccionado
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : pidiendoCuenta
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200"
-            }
-          `}
-        >
-          {pidiendoCuenta
-            ? <Loader2 size={18} className="animate-spin" />
-            : <><Receipt size={18} /> SOLICITAR CUENTA</>
-          }
-        </button>
-
-        {!metodoPagoSeleccionado && (
-          <p className="text-center text-xs text-gray-400 mt-2">
-            Seleccioná un método para continuar
-          </p>
-        )}
-      </div>
-    </div>
-  </div>
-)}
-
+      )}
     </div>
   );
 }

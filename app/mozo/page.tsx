@@ -136,8 +136,13 @@ export default function PanelMozo() {
     const canal = supabase
       .channel("cuenta-mozo-listener")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Sesion" }, async (payload) => {
-        if (payload.old.solicitaCuenta || !payload.new.solicitaCuenta) return;
-        const mesaId = payload.new.mesaId;
+        const oldRecord = payload.old as any;
+        const newRecord = payload.new as any;
+        
+        // Solo reaccionar cuando solicitaCuenta pasa de null/undefined a tener valor
+        if (oldRecord.solicitaCuenta || !newRecord.solicitaCuenta) return;
+        
+        const mesaId = newRecord.mesaId;
         if (yaNotificados.has(mesaId)) return;
         yaNotificados.add(mesaId);
         setTimeout(() => yaNotificados.delete(mesaId), 15000);
@@ -147,6 +152,44 @@ export default function PanelMozo() {
       })
       .subscribe();
     return () => { supabase.removeChannel(canal); };
+  }, []);
+
+  /* WebSocket: cambios de estado de mesas (apertura/cierre de sesiones) */
+  useEffect(() => {
+    console.log("🔌 Conectando listener de sesiones...");
+    
+    const canal = supabase
+      .channel("sesiones-estado-mozo")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "Sesion" },
+        (payload) => {
+          console.log("📥 INSERT Sesion detectado:", payload);
+          cargarMesas();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Sesion" },
+        (payload) => {
+          console.log("📥 UPDATE Sesion detectado:", payload);
+          const oldRecord = payload.old as { fechaFin?: string | null };
+          const newRecord = payload.new as { fechaFin?: string | null };
+          
+          if (!oldRecord.fechaFin && newRecord.fechaFin) {
+            console.log("✅ Mesa liberada, recargando...");
+            cargarMesas();
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log("📡 Estado canal sesiones-estado-mozo:", status);
+      });
+
+    return () => {
+      console.log("🔌 Desconectando listener de sesiones...");
+      supabase.removeChannel(canal);
+    };
   }, []);
 
   const confirmarCobro = async () => {
@@ -376,7 +419,7 @@ export default function PanelMozo() {
                         </div>
                       )}
 
-                      {/* Botones de acción — targets amplios para dedos */}
+                      {/* Botones de acción */}
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           disabled={cargando}
@@ -452,20 +495,17 @@ export default function PanelMozo() {
         )}
       </main>
 
-      {/* ── MODAL COBRO (bottom sheet) ──────────────────────── */}
+      {/* ── MODAL COBRO ──────────────────────────────────────── */}
       {modalCuenta && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
           onClick={(e) => e.target === e.currentTarget && setModalCuenta(null)}
         >
           <div className="bg-white w-full max-w-lg rounded-t-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8 duration-300">
-
-            {/* Handle drag indicator */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Header */}
             <div className="px-5 pb-4 pt-2 flex items-start justify-between border-b border-slate-100">
               <div>
                 <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
@@ -487,7 +527,6 @@ export default function PanelMozo() {
               </button>
             </div>
 
-            {/* Cuerpo */}
             <div className="p-5">
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">
                 ¿Cómo paga el cliente?
@@ -538,7 +577,6 @@ export default function PanelMozo() {
                 )}
               </button>
 
-              {/* Safe area iOS */}
               <div className="h-4" />
             </div>
           </div>

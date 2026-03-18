@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import TopProductos from "./TopProductos";
 import TicketSesiones from "./TicketSesiones";
 import RendimientoMesas from "./RendimientoMesas";
+import RotacionMesas from "./RotacionMesas";
 import VelocidadServicio from "./VelocidadServicio";
 import TiempoEspera from "./TiempoEspera";
 import {
@@ -11,14 +12,14 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, BarChart2, CalendarDays,
-  Minus, ShoppingBag, Trophy, Loader2, UtensilsCrossed, Clock, Armchair, Timer,
+  Minus, ShoppingBag, Trophy, Loader2, UtensilsCrossed, Clock, Armchair, Timer, RefreshCw,
 } from "lucide-react";
 
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 type Range     = "7d" | "4w" | "12m";
 type ChartType = "area" | "bar";
-type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "velocidad"  | "espera";
+type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "rotacion" | "velocidad" | "espera";
 
 interface DataPoint {
   label: string; fecha: string; total: number; sesiones: number;
@@ -95,13 +96,14 @@ const VariacionBadge = ({ variacion, loading }: { variacion: number; loading: bo
 };
 
 // ─── TABS CONFIG ──────────────────────────────────────────────────────────────
-const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
-  { key: "ventas",     label: "Ventas",     icon: BarChart2,       desc: "Evolución y totales del período"  },
-  { key: "productos",  label: "Productos",  icon: UtensilsCrossed, desc: "Ranking por unidades e ingresos"  },
-  { key: "ticket",     label: "Ticket",     icon: Clock,           desc: "Promedio, duración y horarios"    },
-  { key: "mesas",      label: "Mesas",      icon: Armchair,        desc: "Rendimiento por mesa"             },
-  { key: "velocidad",  label: "Velocidad",  icon: Timer,           desc: "Tiempo de servicio y atención"    },
-  { key: "espera",     label: "Espera",     icon: Timer,           desc: "Tiempo de espera y demora"        },
+const TABS: { key: Tab; label: string; icon: any }[] = [
+  { key: "ventas",     label: "Ventas",     icon: BarChart2       },
+  { key: "productos",  label: "Productos",  icon: UtensilsCrossed },
+  { key: "ticket",     label: "Ticket",     icon: Clock           },
+  { key: "mesas",      label: "Mesas",      icon: Armchair        },
+  { key: "rotacion",   label: "Rotación",   icon: RefreshCw       },
+  { key: "velocidad",  label: "Velocidad",  icon: Timer           },
+  { key: "espera",     label: "Espera",     icon: Timer           },
 ];
 
 const RANGES: { key: Range; label: string }[] = [
@@ -170,43 +172,44 @@ export default function AnalyticsPage() {
       {/* ── CARD PRINCIPAL CON TABS ───────────────────────────────── */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
 
-        {/* Barra de tabs */}
-        <div className="grid grid-cols-3 md:grid-cols-5 border-b border-slate-100">
-          {TABS.map(({ key, label, icon: Icon, desc }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`relative flex flex-col md:flex-row items-center md:items-start gap-2 p-4 md:p-5 transition-all text-left group
-                ${tab === key ? "bg-slate-50" : "hover:bg-slate-50/50"}`}
-            >
-              {/* Indicador activo */}
-              <div className={`absolute bottom-0 left-0 right-0 h-0.5 transition-all
-                ${tab === key ? "bg-slate-900" : "bg-transparent"}`}
-              />
-
-              <div className={`p-2.5 rounded-xl flex-shrink-0 transition-all
-                ${tab === key
-                  ? "bg-slate-900 text-white shadow-md"
-                  : "bg-slate-100 text-slate-400 group-hover:bg-slate-200"}`}
+        {/* ── Barra de tabs responsive ─────────────────────────────
+             Mobile:  grid 4 columnas → fila 1 = 4 tabs, fila 2 = 3 tabs
+             Desktop: fila única fluida con flex                        */}
+        <div className="border-b border-slate-100">
+          <div className="grid grid-cols-4 md:flex">
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`relative flex flex-col md:flex-row items-center gap-1 md:gap-2.5
+                  px-1 py-3 md:px-5 md:py-4 transition-all group
+                  md:flex-1
+                  ${tab === key ? "bg-slate-50" : "hover:bg-slate-50/50"}`}
               >
-                <Icon size={18} />
-              </div>
+                {/* Indicador activo */}
+                <div className={`absolute bottom-0 left-0 right-0 h-0.5 transition-all
+                  ${tab === key ? "bg-slate-900" : "bg-transparent"}`}
+                />
 
-              <div className="min-w-0">
-                <p className={`font-black text-sm transition-colors
+                <div className={`p-1.5 md:p-2.5 rounded-lg md:rounded-xl flex-shrink-0 transition-all
+                  ${tab === key
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "bg-slate-100 text-slate-400 group-hover:bg-slate-200"}`}
+                >
+                  <Icon size={16} className="md:w-[18px] md:h-[18px]" />
+                </div>
+
+                <p className={`font-black text-[10px] md:text-sm transition-colors text-center md:text-left leading-tight
                   ${tab === key ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600"}`}>
                   {label}
                 </p>
-                <p className="text-[10px] text-slate-400 font-medium hidden md:block leading-tight mt-0.5">
-                  {desc}
-                </p>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── CONTENIDO DEL TAB ────────────────────────────────── */}
-        <div className="p-6">
+        <div className="p-4 md:p-6">
 
           {/* TAB 1 — VENTAS */}
           {tab === "ventas" && (
@@ -377,20 +380,28 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* TAB 4 — MESAS */}
+          {/* TAB 4 — MESAS (rendimiento) */}
           {tab === "mesas" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <RendimientoMesas range={range} />
             </div>
           )}
 
-          {/* TAB 5 — VELOCIDAD */}
+          {/* TAB 5 — ROTACIÓN DE MESAS */}
+          {tab === "rotacion" && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <RotacionMesas range={range} />
+            </div>
+          )}
+
+          {/* TAB 6 — VELOCIDAD */}
           {tab === "velocidad" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <VelocidadServicio range={range} />
             </div>
           )}
-        {/* TAB 5 — ESPERA */}
+
+          {/* TAB 7 — ESPERA */}
           {tab === "espera" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <TiempoEspera range={range} />

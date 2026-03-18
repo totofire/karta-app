@@ -786,7 +786,168 @@ export async function GET(req: Request) {
         },
       });
     }
-
+    if (mode === "rotacion_mesas") {
+ 
+      const ahora = new Date();
+      let startDate: Date;
+      let truncUnit: string;
+ 
+      if (range === "7d") {
+        startDate = new Date(ahora); startDate.setDate(ahora.getDate() - 6);
+        truncUnit = "day";
+      } else if (range === "4w") {
+        startDate = new Date(ahora); startDate.setDate(ahora.getDate() - 27);
+        truncUnit = "day";
+      } else {
+        startDate = new Date(ahora); startDate.setMonth(ahora.getMonth() - 11); startDate.setDate(1);
+        truncUnit = "month";
+      }
+      startDate.setHours(0, 0, 0, 0);
+ 
+      // Días totales en el período (para calcular rotación real)
+      const diasEnPeriodo = Math.max(
+        Math.ceil((ahora.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+        1
+      );
+ 
+      // ── Per-mesa: sesiones, días activos, duración, ticket ────────
+      const mesaRows = await prisma.$queryRaw<{
+        mesaId:            number;
+        nombre:            string;
+        sector:            string | null;
+        sesiones:          number;
+        dias_activos:      number;
+        duracion_promedio: number;
+        ticket_promedio:   number;
+      }[]>`
+        SELECT
+          m.id                                                             AS "mesaId",
+          m.nombre                                                         AS nombre,
+          m.sector                                                         AS sector,
+          COUNT(s.id)::int                                                 AS sesiones,
+          COUNT(DISTINCT DATE_TRUNC('day', s."fechaFin"))::int             AS dias_activos,
+          COALESCE(
+            AVG(EXTRACT(EPOCH FROM (s."fechaFin" - s."fechaInicio")) / 60),
+            0
+          )::float                                                         AS duracion_promedio,
+          COALESCE(AVG(s."totalVenta"), 0)::float                          AS ticket_promedio
+        FROM "Mesa" m
+        LEFT JOIN "Sesion" s
+          ON s."mesaId"   = m.id
+         AND s."localId"  = ${localId}
+         AND s."fechaFin" IS NOT NULL
+         AND s."fechaFin" >= ${startDate}
+         AND s."fechaFin" <= ${ahora}
+        WHERE m."localId" = ${localId}
+          AND m."activo"  = true
+        GROUP BY m.id, m.nombre, m.sector
+        ORDER BY sesiones DESC
+      `;
+ 
+      const mesas = mesaRows.map((r) => {
+        const rotacionDiaria = diasEnPeriodo > 0 ? r.sesiones / diasEnPeriodo : 0;
+        const ticketProm     = Math.round(r.ticket_promedio);
+        return {
+          mesaId:            r.mesaId,
+          nombre:            r.nombre,
+          sector:            r.sector,
+          sesiones:          r.sesiones,
+          diasActivos:       r.dias_activos,
+          rotacionDiaria:    parseFloat(rotacionDiaria.toFixed(2)),
+          duracionPromedio:  parseFloat(r.duracion_promedio.toFixed(1)),
+          ticketPromedio:    ticketProm,
+          ingresoDiario:     parseFloat((rotacionDiaria * ticketProm).toFixed(0)),
+        };
+      });
+ 
+      // ── Tendencia temporal: rotación por período ──────────────────
+      const tendenciaRows = await prisma.$queryRaw<{
+        periodo:       Date;
+        sesiones:      number;
+        mesas_activas: number;
+      }[]>`
+        SELECT
+          DATE_TRUNC(${truncUnit}, s."fechaFin")     AS periodo,
+          COUNT(s.id)::int                            AS sesiones,
+          COUNT(DISTINCT s."mesaId")::int              AS mesas_activas
+        FROM "Sesion" s
+        WHERE s."localId"  = ${localId}
+          AND s."fechaFin" IS NOT NULL
+          AND s."fechaFin" >= ${startDate}
+          AND s."fechaFin" <= ${ahora}
+        GROUP BY periodo
+        ORDER BY periodo ASC
+      `;
+ 
+      const DIAS_ES  = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+      const MESES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+ 
+      const tendencia = tendenciaRows.map((r) => {
+        const d   = new Date(r.periodo);
+        const dia = String(d.getUTCDate()).padStart(2, "0");
+        const mes = String(d.getUTCMonth() + 1).padStart(2, "0");
+ 
+        let label: string;
+        if (range === "7d") {
+          label = DIAS_ES[d.getUTCDay()];
+        } else if (range === "12m") {
+          label = `${MESES_ES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+        } else {
+          label = `${dia}/${mes}`;
+        }
+ 
+        const rotacion = r.mesas_activas > 0
+          ? parseFloat((r.sesiones / r.mesas_activas).toFixed(2))
+          : 0;
+ 
+        return {
+          label,
+          sesiones:      r.sesiones,
+          mesasActivas:  r.mesas_activas,
+          rotacion,
+        };
+      });
+ 
+      // ── Resumen global ────────────────────────────────────────────
+      const mesasConActividad = mesas.filter((m) => m.sesiones > 0);
+      const totalSesiones     = mesas.reduce((s, m) => s + m.sesiones, 0);
+      const rotacionGlobal    = mesasConActividad.length > 0
+        ? totalSesiones / (mesasConActividad.length * diasEnPeriodo)
+        : 0;
+      const duracionGlobal    = mesasConActividad.length > 0
+        ? Math.round(
+            mesasConActividad.reduce((s, m) => s + m.duracionPromedio * m.sesiones, 0)
+            / totalSesiones
+          )
+        : 0;
+      const ingresoDiarioGlobal = mesasConActividad.length > 0
+        ? Math.round(
+            mesasConActividad.reduce((s, m) => s + m.ingresoDiario, 0)
+            / mesasConActividad.length
+          )
+        : 0;
+ 
+      const mejorMesaObj = mesasConActividad.length > 0
+        ? mesasConActividad.reduce((max, m) =>
+            m.rotacionDiaria > max.rotacionDiaria ? m : max
+          )
+        : null;
+ 
+      return NextResponse.json({
+        mesas,
+        tendencia,
+        resumen: {
+          rotacionGlobal:      parseFloat(rotacionGlobal.toFixed(2)),
+          duracionGlobal,
+          mejorMesa:           mejorMesaObj
+            ? { nombre: mejorMesaObj.nombre, rotacion: mejorMesaObj.rotacionDiaria }
+            : null,
+          ingresoDiarioGlobal,
+          totalMesasActivas:   mesasConActividad.length,
+          diasEnPeriodo,
+        },
+      });
+    }
     return NextResponse.json({ error: "Modo no válido" }, { status: 400 });
 
   } catch (error) {
