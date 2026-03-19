@@ -1,14 +1,12 @@
 "use client";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus,
-  ShoppingCart, Clock, Flame, Loader2, XCircle, Check,
+  ShoppingCart, Clock, Flame, Loader2,
 } from "lucide-react";
 import toast from "react-hot-toast";
-
-const MINUTOS_CANCELACION = 3;
 
 interface ItemCarrito {
   id: string;
@@ -18,33 +16,6 @@ interface ItemCarrito {
   cantidad: number;
   observaciones: string;
   imagen?: string;
-}
-
-// ── Countdown para cancelación ──────────────────────────────────────────────
-function Countdown({ fecha, onExpire }: { fecha: string; onExpire: () => void }) {
-  const [segundos, setSegundos] = useState(0);
-  const onExpireStable = useCallback(onExpire, []);
-
-  useEffect(() => {
-    const calcular = () => {
-      const limite = new Date(fecha).getTime() + MINUTOS_CANCELACION * 60000;
-      const restante = Math.max(0, Math.floor((limite - Date.now()) / 1000));
-      setSegundos(restante);
-      if (restante <= 0) onExpireStable();
-    };
-    calcular();
-    const id = setInterval(calcular, 1000);
-    return () => clearInterval(id);
-  }, [fecha, onExpireStable]);
-
-  const min = Math.floor(segundos / 60);
-  const seg = segundos % 60;
-
-  return (
-    <span className="font-black tabular-nums">
-      {min}:{String(seg).padStart(2, "0")}
-    </span>
-  );
 }
 
 export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo }: any) {
@@ -62,81 +33,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [observacionesModal, setObservacionesModal] = useState("");
   const [metodoPagoSeleccionado, setMetodoPagoSeleccionado] = useState<"QR" | "TARJETA" | "EFECTIVO" | null>(null);
 
-  // ── CANCELACIÓN ───────────────────────────────────────────────────────────
-  const [pedidosExpirados, setPedidosExpirados] = useState<Set<number>>(new Set());
-  const [cancelando, setCancelando] = useState(false);
-  const [modalCancelar, setModalCancelar] = useState<any>(null);
-  const [itemsSeleccionados, setItemsSeleccionados] = useState<Set<number>>(new Set());
 
-  const pedidosCancelables = useMemo(() => {
-    if (!pedidosHistoricos) return [];
-    return pedidosHistoricos.filter((p: any) => {
-      if (p.estado !== "PENDIENTE") return false;
-      if (pedidosExpirados.has(p.id)) return false;
-      const minutos = (Date.now() - new Date(p.fecha).getTime()) / 60000;
-      return minutos <= MINUTOS_CANCELACION;
-    });
-  }, [pedidosHistoricos, pedidosExpirados]);
-
-  const abrirModalCancelar = (pedido: any) => {
-    setModalCancelar(pedido);
-    setItemsSeleccionados(new Set());
-  };
-
-  const toggleItem = (itemId: number) => {
-    setItemsSeleccionados((prev) => {
-      const n = new Set(prev);
-      if (n.has(itemId)) n.delete(itemId);
-      else n.add(itemId);
-      return n;
-    });
-  };
-
-  const toggleTodos = () => {
-    if (!modalCancelar) return;
-    const vivos = modalCancelar.items.filter((i: any) => i.estado !== "CANCELADO");
-    if (itemsSeleccionados.size === vivos.length) {
-      setItemsSeleccionados(new Set());
-    } else {
-      setItemsSeleccionados(new Set(vivos.map((i: any) => i.id)));
-    }
-  };
-
-  const confirmarCancelacion = async () => {
-    if (!modalCancelar || itemsSeleccionados.size === 0) return;
-    setCancelando(true);
-    try {
-      const res = await fetch("/api/pedidos/cancelar-cliente", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tokenEfimero,
-          pedidoId: modalCancelar.id,
-          itemIds: Array.from(itemsSeleccionados),
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const msg = data.pedidoCancelado
-          ? "Pedido cancelado"
-          : `${data.cancelados} producto${data.cancelados > 1 ? "s" : ""} cancelado${data.cancelados > 1 ? "s" : ""}`;
-        toast.success(msg);
-        setModalCancelar(null);
-        router.refresh();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || "No se pudo cancelar");
-      }
-    } catch {
-      toast.error("Error de conexión");
-    } finally {
-      setCancelando(false);
-    }
-  };
-
-  const marcarExpirado = useCallback((id: number) => {
-    setPedidosExpirados((prev) => new Set(prev).add(id));
-  }, []);
 
   // ── AGRUPACIÓN DE CUENTA ──────────────────────────────────────────────────
   const { itemsHistoricos, totalHistorico } = useMemo(() => {
@@ -329,46 +226,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
         </div>
       </header>
 
-      {/* ── BANNER DE PEDIDOS CANCELABLES ───────────────────────────────────── */}
-      {pedidosCancelables.length > 0 && (
-        <div className="px-4 pt-3 space-y-2">
-          {pedidosCancelables.map((p: any) => {
-            const itemsVivos = p.items.filter((i: any) => i.estado !== "CANCELADO");
-            const itemsResumen = itemsVivos
-              .slice(0, 3)
-              .map((i: any) => `${i.cantidad}x ${i.producto.nombre}`)
-              .join(", ");
-            const masItems = itemsVivos.length > 3 ? ` +${itemsVivos.length - 3} más` : "";
-
-            return (
-              <div key={p.id} className="bg-white border border-amber-200 rounded-2xl p-3.5 shadow-sm animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">
-                      {itemsResumen}
-                      {masItems && <span className="text-gray-400">{masItems}</span>}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <Clock size={12} className="text-amber-500" />
-                      <span className="text-xs text-amber-600">
-                        Podés cancelar en <Countdown fecha={p.fecha} onExpire={() => marcarExpirado(p.id)} />
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => abrirModalCancelar(p)}
-                    className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold px-3 py-2.5 rounded-xl active:scale-95 transition-all border border-red-100 shrink-0"
-                  >
-                    <XCircle size={14} />
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {/* ── LISTADO DE PRODUCTOS ───────────────────────────────────────────── */}
       <main className="p-4 space-y-8">
         {categorias.map((cat: any) => (
@@ -544,162 +401,6 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               </div>
               <button onClick={() => setVerCarrito(false)}
                 className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300">CONTINUAR</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── MODAL CANCELAR PEDIDO (SELECCIÓN DE ÍTEMS) ─────────────────────── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {modalCancelar && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 max-h-[85vh] flex flex-col">
-
-            {/* Header */}
-            <div className="bg-red-600 text-white p-5 flex justify-between items-center flex-shrink-0">
-              <div>
-                <h3 className="font-black text-lg flex items-center gap-2">
-                  <XCircle size={20} />
-                  ¿Qué querés cancelar?
-                </h3>
-                <p className="text-red-200 text-xs mt-1 font-medium">
-                  Seleccioná los productos que no querés
-                </p>
-              </div>
-              <button onClick={() => setModalCancelar(null)} className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Countdown en el modal */}
-            <div className="bg-amber-50 px-5 py-2.5 flex items-center justify-center gap-2 border-b border-amber-100">
-              <Clock size={14} className="text-amber-600" />
-              <span className="text-xs text-amber-700 font-bold">
-                Tiempo restante: <Countdown fecha={modalCancelar.fecha} onExpire={() => { setModalCancelar(null); toast.error("Se acabó el tiempo para cancelar"); }} />
-              </span>
-            </div>
-
-            {/* Seleccionar todos */}
-            {(() => {
-              const itemsVivos = modalCancelar.items.filter((i: any) => i.estado !== "CANCELADO");
-              const todosSeleccionados = itemsSeleccionados.size === itemsVivos.length && itemsVivos.length > 0;
-              return (
-                <div className="px-5 pt-4 pb-2">
-                  <button onClick={toggleTodos}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all active:scale-[0.98] ${
-                      todosSeleccionados
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-200 bg-gray-50 hover:border-gray-300"
-                    }`}>
-                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                      todosSeleccionados ? "bg-red-600" : "bg-white border-2 border-gray-300"
-                    }`}>
-                      {todosSeleccionados && <Check size={14} className="text-white" strokeWidth={3} />}
-                    </div>
-                    <span className={`text-sm font-bold ${todosSeleccionados ? "text-red-700" : "text-gray-600"}`}>
-                      Cancelar todo el pedido
-                    </span>
-                  </button>
-                </div>
-              );
-            })()}
-
-            {/* Lista de ítems */}
-            <div className="px-5 pb-4 overflow-y-auto flex-1">
-              <div className="space-y-2 mt-2">
-                {modalCancelar.items
-                  .filter((item: any) => item.estado !== "CANCELADO")
-                  .map((item: any) => {
-                    const seleccionado = itemsSeleccionados.has(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => toggleItem(item.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all active:scale-[0.98] ${
-                          seleccionado
-                            ? "border-red-400 bg-red-50"
-                            : "border-gray-100 bg-white hover:border-gray-200"
-                        }`}
-                      >
-                        {/* Checkbox */}
-                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors ${
-                          seleccionado ? "bg-red-600" : "bg-white border-2 border-gray-300"
-                        }`}>
-                          {seleccionado && <Check size={14} className="text-white" strokeWidth={3} />}
-                        </div>
-
-                        {/* Info del ítem */}
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-bold text-sm leading-tight ${seleccionado ? "text-red-700 line-through" : "text-gray-800"}`}>
-                            {item.producto.nombre}
-                          </p>
-                          {item.observaciones && (
-                            <p className="text-xs text-gray-400 italic mt-0.5 truncate">"{item.observaciones}"</p>
-                          )}
-                        </div>
-
-                        {/* Cantidad + precio */}
-                        <div className="text-right shrink-0">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                            seleccionado ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600"
-                          }`}>
-                            x{item.cantidad}
-                          </span>
-                          <p className={`text-sm font-black mt-0.5 ${seleccionado ? "text-red-600" : "text-gray-800"}`}>
-                            ${item.precio * item.cantidad}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-
-            {/* Footer con resumen y botón confirmar */}
-            <div className="p-5 border-t border-gray-200 bg-gray-50 flex-shrink-0 space-y-3">
-              {itemsSeleccionados.size > 0 && (
-                <div className="flex justify-between items-baseline px-1">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    {itemsSeleccionados.size} producto{itemsSeleccionados.size > 1 ? "s" : ""} a cancelar
-                  </span>
-                  <span className="text-lg font-black text-red-600">
-                    -${modalCancelar.items
-                      .filter((i: any) => itemsSeleccionados.has(i.id))
-                      .reduce((acc: number, i: any) => acc + i.precio * i.cantidad, 0)}
-                  </span>
-                </div>
-              )}
-
-              <button
-                onClick={confirmarCancelacion}
-                disabled={itemsSeleccionados.size === 0 || cancelando}
-                className={`w-full font-bold py-4 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-base ${
-                  itemsSeleccionados.size === 0
-                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    : cancelando
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200"
-                }`}
-              >
-                {cancelando ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>
-                    <XCircle size={18} />
-                    {itemsSeleccionados.size === 0
-                      ? "Seleccioná al menos un producto"
-                      : "Confirmar cancelación"}
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() => setModalCancelar(null)}
-                className="w-full text-center text-sm text-gray-400 font-bold py-2 hover:text-gray-600 transition-colors"
-              >
-                No, volver al menú
-              </button>
             </div>
           </div>
         </div>

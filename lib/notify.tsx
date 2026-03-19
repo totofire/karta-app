@@ -74,7 +74,7 @@ export const notify = {
   },
 
   // 3. COCINA / PEDIDO (Estilo Chef - Específico para nuevos pedidos)
-  pedido: (titulo: string, id: number | string) => {
+  pedido: (titulo: string, mesa: string) => {
     vibrateSuccess();
     toast.custom((t) => (
       <div
@@ -90,7 +90,7 @@ export const notify = {
           <div className="flex-1">
             <p className="text-sm font-black text-gray-900">{titulo}</p>
             <p className="text-xs text-gray-500 font-medium mt-0.5 flex items-center gap-1">
-               <UtensilsCrossed size={10} /> Pedido #{id}
+              <UtensilsCrossed size={10} /> {mesa}
             </p>
           </div>
           <X size={16} className="text-gray-300" />

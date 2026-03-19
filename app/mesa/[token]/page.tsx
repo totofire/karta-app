@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import MenuInterface from "./MenuInterface";
 import ClienteListener from "@/components/ClienteListener";
-import { Store, ScanLine, CheckCircle2 } from "lucide-react";
+import ServicioListener from "@/components/ServicioListener";
+import { Store, ScanLine, UtensilsCrossed } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,38 @@ export default async function Page({
 
   // Sesión vigente → mostrar menú
   if (sesionActiva && !sesionActiva.fechaFin) {
+    // Verificar si el servicio está cerrado (mozos siempre pueden acceder)
+    if (!esMozo) {
+      const config = await prisma.configuracion.findUnique({
+        where: { localId: sesionActiva.localId },
+        select: { cajaAbierta: true },
+      });
+      if (config && !config.cajaAbierta) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
+            <ServicioListener localId={sesionActiva.localId} />
+            <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-sm w-full text-center flex flex-col items-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-slate-700 to-slate-900" />
+              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                <UtensilsCrossed size={48} className="text-slate-400" />
+              </div>
+              <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">
+                Servicio cerrado
+              </h2>
+              <p className="text-slate-500 font-medium leading-relaxed mb-6">
+                Por el momento no estamos tomando pedidos.
+                <br />
+                ¡Volvemos pronto!
+              </p>
+              <div className="text-xs text-slate-400 font-black uppercase tracking-widest border-t border-gray-100 pt-4 w-full">
+                KARTA APP
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+
     const [categorias, pedidos] = await Promise.all([
       prisma.categoria.findMany({
         where: { localId: sesionActiva.localId },
@@ -140,7 +173,39 @@ export default async function Page({
     );
   }
 
-  // ── 3. Buscar sesión abierta para esta mesa o crear una nueva ────────────
+  // ── 3. Verificar si el servicio está cerrado antes de crear sesión ────────
+  if (!esMozo) {
+    const config = await prisma.configuracion.findUnique({
+      where: { localId: mesa.localId },
+      select: { cajaAbierta: true },
+    });
+    if (config && !config.cajaAbierta) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
+          <ServicioListener localId={mesa.localId} />
+          <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-sm w-full text-center flex flex-col items-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-slate-700 to-slate-900" />
+            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+              <UtensilsCrossed size={48} className="text-slate-400" />
+            </div>
+            <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">
+              Servicio cerrado
+            </h2>
+            <p className="text-slate-500 font-medium leading-relaxed mb-6">
+              Por el momento no estamos tomando pedidos.
+              <br />
+              ¡Volvemos pronto!
+            </p>
+            <div className="text-xs text-slate-400 font-black uppercase tracking-widest border-t border-gray-100 pt-4 w-full">
+              KARTA APP
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // ── 4. Buscar sesión abierta para esta mesa o crear una nueva ────────────
   let sesion = await prisma.sesion.findFirst({
     where: { mesaId: mesa.id, fechaFin: null },
     orderBy: { fechaInicio: "desc" },

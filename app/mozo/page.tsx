@@ -1,6 +1,7 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import {
   Loader2,
   Utensils,
@@ -16,13 +17,12 @@ import {
   CircleDot,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import { createClient } from "@supabase/supabase-js";
 import { notify } from "@/lib/notify";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { audioManager } from "@/lib/audio";
+import { supabase } from "@/lib/supabase";
+import type { PedidoPayload } from "@/lib/supabase-types";
+import MesasListener from "@/components/MesasListener";
+import NotificationsManager from "@/components/NotificationsManager";
 
 type TipoPedido = "cocina" | "barra" | "ambos";
 type MetodoPago = "QR" | "TARJETA" | "EFECTIVO";
@@ -65,133 +65,123 @@ const ChipListo = ({ tipo }: { tipo: TipoPedido }) => (
   </span>
 );
 
+/* ── Fetcher SWR ──────────────────────────────────────────── */
+const fetcher = (url: string) =>
+  fetch(url, { cache: "no-store" }).then((r) =>
+    r.ok ? r.json() : { mesas: [], localId: null },
+  );
+
 /* ══════════════════════════════════════════════════════════ */
 export default function PanelMozo() {
-  const [mesas, setMesas] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [abriendo, setAbriendo] = useState<number | null>(null);
-  const [pidiendoCuenta, setPidiendoCuenta] = useState<number | null>(null);
-  const [pedidosListos, setPedidosListos] = useState<Map<number, TipoPedido>>(new Map());
-  const [tab, setTab] = useState<Tab>("ocupadas");
-  const [modalCuenta, setModalCuenta] = useState<{ mesa: any; metodo: MetodoPago | null } | null>(null);
-
   const router = useRouter();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCajaRef = useRef<HTMLAudioElement | null>(null);
 
-  /* Desbloqueo de audio en primer toque */
+  // ── SWR ─────────────────────────────────────────────────
+  const { data, mutate, isLoading } = useSWR("/api/mozo/mesas", fetcher, {
+    revalidateOnFocus: true,
+  });
+  const mesas: any[]        = data?.mesas   ?? [];
+  const localId: number | null = data?.localId ?? null;
+
+  // Ref estable para mutate (usado dentro de callbacks de WebSocket)
+  const mutateRef = useRef(mutate);
+  useEffect(() => { mutateRef.current = mutate; }, [mutate]);
+
+  // ── Reconexión al volver online ─────────────────────────────────────────
   useEffect(() => {
-    audioRef.current = new Audio("/sounds/ding.mp3");
-    audioCajaRef.current = new Audio("/sounds/caja.mp3");
-    const unlock = () => {
-      [audioRef, audioCajaRef].forEach((r) => {
-        r.current?.play().then(() => { r.current?.pause(); r.current!.currentTime = 0; }).catch(() => {});
-      });
-    };
-    document.addEventListener("click", unlock, { once: true });
-    document.addEventListener("touchstart", unlock, { once: true });
-    return () => {
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("touchstart", unlock);
-    };
+    const refresh = () => mutateRef.current();
+    window.addEventListener("online", refresh);
+    return () => window.removeEventListener("online", refresh);
   }, []);
 
-  const cargarMesas = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/mozo/mesas");
-      if (res.ok) setMesas(await res.json());
-      else toast.error("Error al cargar mesas");
-    } catch { toast.error("Error de conexión"); }
-    finally { setLoading(false); }
-  };
+  // ── Estado UI ───────────────────────────────────────────
+  const [abriendo, setAbriendo]         = useState<number | null>(null);
+  const [pidiendoCuenta, setPidiendoCuenta] = useState<number | null>(null);
+  const [pedidosListos, setPedidosListos]   = useState<Map<number, TipoPedido>>(new Map());
+  const [tab, setTab]                   = useState<Tab>("ocupadas");
+  const [modalCuenta, setModalCuenta]   = useState<{ mesa: any; metodo: MetodoPago | null } | null>(null);
 
-  useEffect(() => { cargarMesas(); }, []);
+  // Audio gestionado por audioManager (NotificationsManager lo desbloquea)
 
-  /* WebSocket: pedido listo */
+  // ── Diff SWR: detectar pideCuenta ──────────────────────
+  const prevMesasRef          = useRef<any[]>([]);
+  const inicializado          = useRef(false);
+  const cuentasNotificadasRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
-    const canal = supabase
-      .channel("pedidos-mozo-listener")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Pedido" }, async (payload) => {
-        const n = payload.new as any, o = payload.old as any;
-        if (n.estado !== "ENTREGADO" || o.estado === "ENTREGADO") return;
-        try {
-          const res = await fetch(`/api/mozo/pedido-listo?pedidoId=${n.id}`);
-          if (!res.ok) return;
-          const { mesaId, mesaNombre, tipo } = await res.json();
-          audioRef.current && ((audioRef.current.currentTime = 0), audioRef.current.play().catch(() => {}));
-          navigator.vibrate?.([100, 50, 200]);
-          notify.pedidoListo(mesaNombre, tipo);
-          setPedidosListos((prev) => new Map(prev).set(mesaId, tipo));
-          cargarMesas();
-        } catch {}
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(canal); };
-  }, []);
+    if (!Array.isArray(mesas) || mesas.length === 0) return;
 
-  /* WebSocket: cliente pide cuenta */
-  useEffect(() => {
-    const yaNotificados = new Set<number>();
-    const canal = supabase
-      .channel("cuenta-mozo-listener")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Sesion" }, async (payload) => {
-        const oldRecord = payload.old as any;
-        const newRecord = payload.new as any;
-        
-        // Solo reaccionar cuando solicitaCuenta pasa de null/undefined a tener valor
-        if (oldRecord.solicitaCuenta || !newRecord.solicitaCuenta) return;
-        
-        const mesaId = newRecord.mesaId;
-        if (yaNotificados.has(mesaId)) return;
-        yaNotificados.add(mesaId);
-        setTimeout(() => yaNotificados.delete(mesaId), 15000);
-        audioCajaRef.current && ((audioCajaRef.current.currentTime = 0), audioCajaRef.current.play().catch(() => {}));
-        navigator.vibrate?.([300, 100, 300]);
-        cargarMesas();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(canal); };
-  }, []);
+    if (!inicializado.current) {
+      prevMesasRef.current = mesas;
+      inicializado.current = true;
+      return;
+    }
 
-  /* WebSocket: cambios de estado de mesas (apertura/cierre de sesiones) */
+    const prev = prevMesasRef.current;
+    mesas.forEach((mesa: any) => {
+      const anterior = prev.find((m: any) => m.id === mesa.id);
+      if (!anterior) return;
+
+      if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
+        const key = mesa.id;
+        if (!cuentasNotificadasRef.current.has(key)) {
+          cuentasNotificadasRef.current.add(key);
+          setTimeout(() => cuentasNotificadasRef.current.delete(key), 15_000);
+          audioManager.play("caja");
+          navigator.vibrate?.([300, 100, 300]);
+          notify.atencion("¡Piden la cuenta!", mesa.nombre);
+        }
+      }
+    });
+
+    prevMesasRef.current = mesas;
+  }, [mesas]);
+
+  // ── WebSocket: Pedido (solo para "pedido listo") ───────
+  // Mesa y Sesion los maneja <MesasListener /> (con filtro por localId).
+  // Este canal solo escucha Pedido para detectar la transición a ENTREGADO
+  // y mostrar la notificación al mozo.
   useEffect(() => {
-    console.log("🔌 Conectando listener de sesiones...");
-    
+    console.log("🔌 Conectando canal mozo-pedidos-realtime...");
+
     const canal = supabase
-      .channel("sesiones-estado-mozo")
+      .channel("mozo-pedidos-realtime")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "Sesion" },
-        (payload) => {
-          console.log("📥 INSERT Sesion detectado:", payload);
-          cargarMesas();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "Sesion" },
-        (payload) => {
-          console.log("📥 UPDATE Sesion detectado:", payload);
-          const oldRecord = payload.old as { fechaFin?: string | null };
-          const newRecord = payload.new as { fechaFin?: string | null };
-          
-          if (!oldRecord.fechaFin && newRecord.fechaFin) {
-            console.log("✅ Mesa liberada, recargando...");
-            cargarMesas();
-          }
-        }
+        { event: "UPDATE", schema: "public", table: "Pedido" },
+        async (payload) => {
+          const newRecord = payload.new as PedidoPayload;
+          const oldRecord = payload.old as PedidoPayload;
+
+          // Siempre refrescar (total de mesa puede cambiar)
+          mutateRef.current();
+
+          // Pedido listo: transición hacia ENTREGADO
+          if (newRecord.estado !== "ENTREGADO" || oldRecord.estado === "ENTREGADO") return;
+          if (newRecord.id === undefined) return;
+
+          try {
+            const res = await fetch(`/api/mozo/pedido-listo?pedidoId=${newRecord.id}`);
+            if (!res.ok) return;
+            const { mesaId, mesaNombre, tipo } = await res.json();
+
+            audioManager.play("ding");
+            navigator.vibrate?.([100, 50, 200]);
+            notify.pedidoListo(mesaNombre, tipo);
+            setPedidosListos((prev) => new Map(prev).set(mesaId, tipo));
+          } catch {}
+        },
       )
       .subscribe((status) => {
-        console.log("📡 Estado canal sesiones-estado-mozo:", status);
+        console.log("📡 [mozo-pedidos] Estado:", status);
       });
 
     return () => {
-      console.log("🔌 Desconectando listener de sesiones...");
+      console.log("🔌 Desconectando canal mozo-pedidos-realtime");
       supabase.removeChannel(canal);
     };
   }, []);
 
+  // ── Acciones ────────────────────────────────────────────
   const confirmarCobro = async () => {
     if (!modalCuenta?.mesa || !modalCuenta.metodo) return;
     const mesa = modalCuenta.mesa;
@@ -205,7 +195,7 @@ export default function PanelMozo() {
       if (res.ok) {
         toast.success(`Cuenta solicitada — ${mesa.nombre} 🧾`);
         setModalCuenta(null);
-        cargarMesas();
+        mutate();
       } else {
         const d = await res.json();
         toast.error(d.error || "Error al solicitar cuenta");
@@ -244,6 +234,14 @@ export default function PanelMozo() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Toaster position="top-center" toastOptions={{ style: { fontSize: 13, fontWeight: 700 } }} />
+
+      {/* Notificaciones nativas del OS + desbloqueo de audio */}
+      <NotificationsManager />
+
+      {/* MesasListener: Mesa + Sesion filtrados por localId */}
+      {localId && (
+        <MesasListener localId={localId} onUpdate={() => mutateRef.current()} />
+      )}
 
       {/* ── HEADER ─────────────────────────────────────────── */}
       <header className="bg-slate-900 text-white px-4 pt-3 pb-3 sticky top-0 z-30 shadow-xl">
@@ -316,7 +314,7 @@ export default function PanelMozo() {
 
       {/* ── CONTENIDO ──────────────────────────────────────── */}
       <main className="flex-1 p-3 pb-8 max-w-2xl mx-auto w-full">
-        {loading && mesas.length === 0 ? (
+        {isLoading && mesas.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <Loader2 className="animate-spin text-slate-400" size={36} />
             <p className="text-slate-400 text-sm font-medium">Cargando mesas…</p>

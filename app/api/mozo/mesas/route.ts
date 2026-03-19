@@ -75,7 +75,13 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json(mesasConEstado);
+    return NextResponse.json({ mesas: mesasConEstado, localId }, {
+      headers: {
+        // Importante para PWA / Service Workers: evitar cache de estado en vivo
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        Pragma: "no-cache",
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Error cargando mesas" },

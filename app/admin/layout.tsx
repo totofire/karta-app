@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
 import { notify } from "@/lib/notify";
 import { notificarNativo } from "@/lib/webNotify";
+import type { PedidoPayload, SesionPayload } from "@/lib/supabase-types";
 import {
   LayoutDashboard,
   ChefHat,
@@ -24,18 +25,26 @@ import {
   GlassWater,
   BarChart2,
   Users,
+  Power,
 } from "lucide-react";
 
-const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);
+const fetcher        = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);
+const fetcherMe      = (url: string) => fetch(url).then(r => r.ok ? r.json() : null);
+const fetcherServicio = (url: string) => fetch(url).then(r => r.ok ? r.json() : null);
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // ── SWR ────────────────────────────────────────────────────────────────────
-  const { data: cocina = [], mutate: mutateCocina } = useSWR("/api/cocina",       fetcher, { revalidateOnFocus: true });
-  const { data: barra  = [], mutate: mutateBarra  } = useSWR("/api/barra",        fetcher, { revalidateOnFocus: true });
-  const { data: mesas  = [], mutate: mutateMesas  } = useSWR("/api/admin/estado", fetcher, { revalidateOnFocus: true });
+  const { data: cocina = [], mutate: mutateCocina } = useSWR("/api/cocina",       fetcher,   { revalidateOnFocus: true });
+  const { data: barra  = [], mutate: mutateBarra  } = useSWR("/api/barra",        fetcher,   { revalidateOnFocus: true });
+  const { data: mesas  = [], mutate: mutateMesas  } = useSWR("/api/admin/estado", fetcher,   { revalidateOnFocus: true });
+  const { data: me                                } = useSWR("/api/auth/me",      fetcherMe,      { revalidateOnFocus: false });
+  const { data: servicio, mutate: mutateServicio  } = useSWR("/api/admin/servicio", fetcherServicio, { revalidateOnFocus: true });
+  const localId: number | null = me?.localId ?? null;
+  const cajaAbierta: boolean = servicio?.cajaAbierta ?? true;
+  const [toggling, setToggling] = useState(false);
 
   const pendientesCocina = Array.isArray(cocina) ? cocina.length : 0;
   const pendientesBarra  = Array.isArray(barra)  ? barra.length  : 0;
@@ -48,13 +57,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const mutateBarraRef      = useRef(mutateBarra);
   const mesasRef            = useRef<any[]>([]);
   const prevMesasRef        = useRef<any[]>([]);
-  const mesasSolicitadasRef = useRef<Set<number>>(new Set());
+  const cuentasNotificadasRef = useRef<Set<number>>(new Set());
   const inicializado        = useRef(false);
 
   useEffect(() => { mutateRef.current       = mutateMesas;  }, [mutateMesas]);
   useEffect(() => { mutateCocinaRef.current = mutateCocina; }, [mutateCocina]);
   useEffect(() => { mutateBarraRef.current  = mutateBarra;  }, [mutateBarra]);
   useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
+
+  // ── Reconexión al volver online ───────────────────────────────────────────
+  useEffect(() => {
+    const refresh = () => {
+      mutateRef.current();
+      mutateCocinaRef.current();
+      mutateBarraRef.current();
+    };
+    window.addEventListener("online", refresh);
+    return () => window.removeEventListener("online", refresh);
+  }, []);
 
   // ── DIFF: actualiza UI en base a cambios de SWR ───────────────────────────
   // Se usa SOLO para los toasts in-app (notify.*) cuando la pestaña está activa.
@@ -90,9 +110,9 @@ useEffect(() => {
     }
 
     if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
-      if (!mesasSolicitadasRef.current.has(mesa.id)) {
-        mesasSolicitadasRef.current.add(mesa.id);
-        setTimeout(() => mesasSolicitadasRef.current.delete(mesa.id), 10_000);
+      if (!cuentasNotificadasRef.current.has(mesa.id)) {
+        cuentasNotificadasRef.current.add(mesa.id);
+        setTimeout(() => cuentasNotificadasRef.current.delete(mesa.id), 10_000);
         audioManager.play("caja");        // ← audio aquí, funciona
         navigator.vibrate?.([300, 100, 300]);
         notify.atencion("¡Piden la cuenta!", mesa.nombre);
@@ -103,67 +123,107 @@ useEffect(() => {
   prevMesasRef.current = mesas;
 }, [mesas]);
 
-  // ── CANAL SUPABASE ────────────────────────────────────────────────────────
+  // ── CANALES SUPABASE (1 canal por tabla) ──────────────────────────────────
   // El WebSocket NO es throttleado por Chrome en pestañas de fondo.
   // Por eso las notificaciones nativas del OS se disparan aquí directamente,
   // sin esperar el fetch de SWR (que sí puede demorarse en background).
-  // ── CANAL SUPABASE ────────────────────────────────────────────────────────
-useEffect(() => {
-  const canal = supabase
-    .channel("realtime-admin-layout")
 
-    // INSERT Pedido → notificación nativa INMEDIATA (funciona en background)
-    //                 audio/toasts los maneja el diff cuando SWR refresca
-    .on("postgres_changes",
-      { event: "INSERT", schema: "public", table: "Pedido" },
-      () => {
-        notificarNativo("🍽️ Nuevo pedido", "Hay un nuevo pedido esperando", "pedido-nuevo");
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
+  useEffect(() => {
+    if (!localId) return;
 
-    .on("postgres_changes",
-      { event: "UPDATE", schema: "public", table: "Pedido" },
-      () => {
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
+    console.log(`🔌 Conectando canal admin-pedidos-${localId}...`);
 
-    .on("postgres_changes",
-      { event: "DELETE", schema: "public", table: "Pedido" },
-      () => {
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
+    const canal = supabase
+      .channel(`admin-pedidos-${localId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
+        (payload) => {
+          const eventType = payload.eventType;
+          const newRecord = payload.new as PedidoPayload;
+          const oldRecord = payload.old as PedidoPayload;
 
-    .on("postgres_changes",
-      { event: "UPDATE", schema: "public", table: "Sesion" },
-      (payload) => {
-        mutateRef.current();
+          console.log(`📥 [admin-pedidos] ${eventType} Pedido:`, { old: oldRecord, new: newRecord });
 
-        const pideCuenta = !payload.old?.solicitaCuenta && !!payload.new?.solicitaCuenta;
-        if (!pideCuenta) return;
+          if (eventType === "INSERT") {
+            notificarNativo("🍽️ Nuevo pedido", "Hay un nuevo pedido esperando", "pedido-nuevo");
+          }
 
-        const mesaId: number = payload.new?.mesaId;
-        if (mesasSolicitadasRef.current.has(mesaId)) return;
+          mutateRef.current();
+          mutateCocinaRef.current();
+          mutateBarraRef.current();
+        }
+      )
+      .subscribe((status) => {
+        console.log("📡 [admin-pedidos] Estado:", status);
+      });
 
-        // Solo la notificación nativa desde el WS (audio lo maneja el diff)
-        const mesaNombre = mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
-        notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
-      })
+    return () => {
+      console.log(`🔌 Desconectando canal admin-pedidos-${localId}`);
+      supabase.removeChannel(canal);
+    };
+  }, [localId]);
 
-    .on("postgres_changes",
-      { event: "INSERT", schema: "public", table: "Sesion" },
-      () => { mutateRef.current(); })
+  useEffect(() => {
+    if (!localId) return;
 
-    .subscribe();
+    console.log(`🔌 Conectando canal admin-sesiones-${localId}...`);
 
-  return () => { supabase.removeChannel(canal); };
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    const canal = supabase
+      .channel(`admin-sesiones-${localId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "Sesion", filter: `localId=eq.${localId}` },
+        (payload) => {
+          const eventType = payload.eventType;
+          const newRecord = payload.new as SesionPayload;
+          const oldRecord = payload.old as SesionPayload;
+
+          console.log(`📥 [admin-sesiones] ${eventType} Sesion:`, { old: oldRecord, new: newRecord });
+
+          if (eventType !== "UPDATE") {
+            mutateRef.current();
+            return;
+          }
+
+          const pideCuenta = !oldRecord.solicitaCuenta && !!newRecord.solicitaCuenta;
+          if (pideCuenta) {
+            const mesaId = newRecord.mesaId;
+            if (mesaId !== undefined) {
+              if (cuentasNotificadasRef.current.has(mesaId)) return;
+              cuentasNotificadasRef.current.add(mesaId);
+              setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15000);
+            }
+            const mesaNombre =
+              mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? (mesaId !== undefined ? `#${mesaId}` : "desconocida");
+            notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, mesaId !== undefined ? `cuenta-${mesaId}` : "cuenta");
+          }
+
+          mutateRef.current();
+        }
+      )
+      .subscribe((status) => {
+        console.log("📡 [admin-sesiones] Estado:", status);
+      });
+
+    return () => {
+      console.log(`🔌 Desconectando canal admin-sesiones-${localId}`);
+      supabase.removeChannel(canal);
+    };
+  }, [localId]);
+
+  // ── Cierre de servicio ────────────────────────────────────────────────────
+  const toggleServicio = async () => {
+    if (toggling) return;
+    setToggling(true);
+    try {
+      await fetch("/api/admin/servicio", { method: "POST" });
+      await mutateServicio();
+    } finally {
+      setToggling(false);
+    }
+  };
+
   // ── MENÚ ──────────────────────────────────────────────────────────────────
   const menuItems = [
     { name: "Panel General",     href: "/admin",            icon: LayoutDashboard },
@@ -252,7 +312,26 @@ useEffect(() => {
           })}
         </nav>
 
-        <div className="p-3 border-t border-gray-100 bg-white z-20">
+        <div className="p-3 border-t border-gray-100 bg-white z-20 space-y-1">
+          {/* Toggle servicio abierto/cerrado */}
+          <button
+            onClick={toggleServicio}
+            disabled={toggling}
+            className={`flex items-center rounded-xl transition-colors font-bold text-sm h-12 w-full group relative ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"} ${cajaAbierta ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" : "text-red-600 bg-red-50 hover:bg-red-100"} disabled:opacity-60`}
+            title={cajaAbierta ? "Servicio abierto — click para cerrar" : "Servicio cerrado — click para abrir"}
+          >
+            <Power size={20} className="flex-shrink-0 relative z-10" />
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100" : "opacity-0 w-0 hidden"}`}>
+              {cajaAbierta ? "Servicio abierto" : "Servicio cerrado"}
+            </span>
+            {!isSidebarOpen && (
+              <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
+                {cajaAbierta ? "Servicio abierto" : "Servicio cerrado"}
+                <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+              </div>
+            )}
+          </button>
+
           <button
             onClick={() => (window.location.href = "/api/logout")}
             className={`flex items-center rounded-xl transition-colors font-bold text-sm h-12 w-full group relative text-gray-400 hover:text-red-600 hover:bg-red-50 ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"}`}

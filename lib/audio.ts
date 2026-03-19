@@ -11,12 +11,23 @@ class AudioManager {
   private _unlocked  = false;
   private _unlocking = false;
   private _listeners: Array<() => void> = [];
+  private _queue: SoundKey[] = [];
 
   constructor() {
     // Restaurar desde sessionStorage si el usuario ya desbloqueó en esta sesión.
     // Esto sobrevive a router.refresh() y HMR en dev.
     if (typeof window !== 'undefined') {
       this._unlocked = sessionStorage.getItem(SESSION_KEY) === '1';
+
+      // Cuando el tab vuelve al frente, reproducir los sonidos que llegaron
+      // mientras estaba en background (el navegador bloquea audio en tabs ocultos).
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this._queue.length > 0) {
+          const pending = [...new Set(this._queue)]; // deduplicar
+          this._queue = [];
+          setTimeout(() => pending.forEach((k) => this._playNow(k)), 150);
+        }
+      });
     }
   }
 
@@ -71,6 +82,16 @@ class AudioManager {
       return;
     }
 
+    // Tab en background → encolar; se reproducirá cuando vuelva al frente.
+    if (document.hidden) {
+      this._queue.push(key);
+      return;
+    }
+
+    this._playNow(key);
+  }
+
+  private _playNow(key: SoundKey) {
     try {
       const audio = new Audio(SOUNDS[key]);
       audio.volume = 1;
