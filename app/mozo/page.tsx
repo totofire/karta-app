@@ -15,6 +15,10 @@ import {
   X,
   CheckCircle2,
   CircleDot,
+  ClipboardList,
+  Trash2,
+  PlusCircle,
+  AlertCircle,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { notify } from "@/lib/notify";
@@ -99,6 +103,10 @@ export default function PanelMozo() {
   const [pedidosListos, setPedidosListos]   = useState<Map<number, TipoPedido>>(new Map());
   const [tab, setTab]                   = useState<Tab>("ocupadas");
   const [modalCuenta, setModalCuenta]   = useState<{ mesa: any; metodo: MetodoPago | null } | null>(null);
+  const [modalDetalle, setModalDetalle] = useState<{ mesa: any } | null>(null);
+  const [detalleSesion, setDetalleSesion] = useState<any | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [cancelandoItem, setCancelandoItem] = useState<Set<number>>(new Set());
 
   // Audio gestionado por audioManager (NotificationsManager lo desbloquea)
 
@@ -218,6 +226,41 @@ export default function PanelMozo() {
       if (res.ok) { toast.success("Mesa abierta", { id: tid }); router.push(`/mesa/${data.token}`); }
       else { toast.error(data.error || "Error", { id: tid }); setAbriendo(null); }
     } catch { toast.error("Error de red", { id: tid }); setAbriendo(null); }
+  };
+
+  // ── Detalle de mesa ─────────────────────────────────────
+  const abrirDetalle = async (mesa: any) => {
+    if (!mesa.sesionId) return;
+    setModalDetalle({ mesa });
+    setDetalleSesion(null);
+    setCargandoDetalle(true);
+    try {
+      const res = await fetch(`/api/mozo/sesion/${mesa.sesionId}`);
+      if (res.ok) setDetalleSesion(await res.json());
+      else toast.error("No se pudo cargar el detalle");
+    } catch { toast.error("Error de conexión"); }
+    finally { setCargandoDetalle(false); }
+  };
+
+  const cancelarItem = async (itemId: number) => {
+    setCancelandoItem((prev) => new Set(prev).add(itemId));
+    try {
+      const res = await fetch("/api/mozo/cancelar-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Error al cancelar"); return; }
+      // Refrescar detalle y lista de mesas
+      if (modalDetalle?.mesa?.sesionId) {
+        const res2 = await fetch(`/api/mozo/sesion/${modalDetalle.mesa.sesionId}`);
+        if (res2.ok) setDetalleSesion(await res2.json());
+      }
+      mutate();
+      toast.success("Ítem cancelado");
+    } catch { toast.error("Error de conexión"); }
+    finally { setCancelandoItem((prev) => { const n = new Set(prev); n.delete(itemId); return n; }); }
   };
 
   const mesasLibres   = mesas.filter((m) => !m.ocupada);
@@ -421,12 +464,11 @@ export default function PanelMozo() {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           disabled={cargando}
-                          onClick={() => entrarAMesa(mesa.id, mesa.nombre)}
+                          onClick={() => abrirDetalle(mesa)}
                           className="py-3.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
-                          {abriendo === mesa.id ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : "Ver menú"}
+                          <ClipboardList size={15} />
+                          Pedidos
                         </button>
 
                         <button
@@ -492,6 +534,151 @@ export default function PanelMozo() {
           )
         )}
       </main>
+
+      {/* ── MODAL DETALLE DE MESA ────────────────────────────── */}
+      {modalDetalle && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={(e) => e.target === e.currentTarget && setModalDetalle(null)}
+        >
+          <div className="bg-white w-full max-w-lg rounded-t-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8 duration-300 flex flex-col max-h-[85vh]">
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="px-5 py-3 flex items-center justify-between border-b border-slate-100 flex-shrink-0">
+              <div>
+                <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
+                  <ClipboardList size={20} className="text-red-600" />
+                  {modalDetalle.mesa.nombre}
+                </h3>
+                <p className="text-slate-500 text-sm font-medium">
+                  Total:{" "}
+                  <span className="font-black text-slate-900">
+                    ${(detalleSesion
+                      ? detalleSesion.pedidos
+                          .flatMap((p: any) => p.items)
+                          .filter((i: any) => i.estado !== "CANCELADO")
+                          .reduce((acc: number, i: any) => acc + i.precio * i.cantidad, 0)
+                      : modalDetalle.mesa.totalActual
+                    ).toLocaleString()}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setModalDetalle(null)}
+                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors active:scale-95"
+              >
+                <X size={18} className="text-slate-600" />
+              </button>
+            </div>
+
+            {/* Contenido scrolleable */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+              {cargandoDetalle ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={28} className="animate-spin text-slate-300" />
+                </div>
+              ) : !detalleSesion || detalleSesion.pedidos.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <AlertCircle size={32} className="mx-auto mb-2 opacity-40" />
+                  <p className="font-bold text-sm">Sin pedidos activos</p>
+                </div>
+              ) : (
+                detalleSesion.pedidos.map((pedido: any, idx: number) => {
+                  const itemsActivos = pedido.items.filter((i: any) => i.estado !== "CANCELADO");
+                  if (itemsActivos.length === 0) return null;
+                  return (
+                    <div key={pedido.id}>
+                      {/* Encabezado del pedido */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Pedido #{idx + 1}
+                        </span>
+                        <span className="text-[10px] text-slate-300 font-medium">
+                          {new Date(pedido.fecha).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+
+                      {/* Items */}
+                      <div className="bg-slate-50 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                        {itemsActivos.map((item: any) => {
+                          const entregado  = item.estado === "ENTREGADO";
+                          const cancelando = cancelandoItem.has(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className={`flex items-center gap-3 px-4 py-3 transition-opacity ${cancelando ? "opacity-40" : ""}`}
+                            >
+                              {/* Estado dot */}
+                              <div
+                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  entregado ? "bg-green-400" : "bg-amber-400"
+                                }`}
+                              />
+
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 leading-tight truncate">
+                                  <span className="text-slate-500 font-black mr-1">{item.cantidad}×</span>
+                                  {item.producto.nombre}
+                                </p>
+                                {item.observaciones && (
+                                  <p className="text-[11px] text-slate-400 font-medium mt-0.5 italic truncate">
+                                    {item.observaciones}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Precio */}
+                              <span className="text-sm font-black text-slate-700 shrink-0">
+                                ${(item.precio * item.cantidad).toLocaleString()}
+                              </span>
+
+                              {/* Botón cancelar (solo PENDIENTE) */}
+                              {!entregado ? (
+                                <button
+                                  onClick={() => cancelarItem(item.id)}
+                                  disabled={cancelando}
+                                  className="p-1.5 rounded-lg hover:bg-red-50 active:bg-red-100 text-slate-300 hover:text-red-500 transition-colors active:scale-95 flex-shrink-0"
+                                  title="Cancelar ítem"
+                                >
+                                  {cancelando
+                                    ? <Loader2 size={14} className="animate-spin" />
+                                    : <Trash2 size={14} />
+                                  }
+                                </button>
+                              ) : (
+                                <div className="w-7 flex-shrink-0" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer: agregar más */}
+            <div className="px-5 pb-6 pt-3 border-t border-slate-100 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setModalDetalle(null);
+                  router.push(`/mesa/${modalDetalle.mesa.tokenEfimero}`);
+                }}
+                className="w-full py-4 rounded-2xl bg-slate-900 text-white font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <PlusCircle size={18} />
+                Agregar ítems a la mesa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL COBRO ──────────────────────────────────────── */}
       {modalCuenta && (

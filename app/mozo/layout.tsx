@@ -1,11 +1,14 @@
 // app/mozo/layout.tsx
 import type { Metadata, Viewport } from "next";
+import InstalarPWA from "@/components/InstalarPWA";
+import RegistrarSW from "@/components/RegistrarSW";
 
 export const metadata: Metadata = {
   title: "Karta — Mozo",
   description: "Panel de operaciones",
+  manifest: "/manifest.webmanifest",
   icons: {
-    apple: "/apple-touch-icon.png",   // ← agregá esta línea
+    apple: "/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,
@@ -19,9 +22,15 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false,           // Evita zoom accidental en el celu
+  userScalable: false,
 };
 
 export default function MozoLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <RegistrarSW />
+      {children}
+      <InstalarPWA />
+    </>
+  );
 }

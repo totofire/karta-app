@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!session?.localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const config = await prisma.configuracion.findUnique({
     where: { localId: session.localId },
@@ -18,7 +18,7 @@ export async function GET() {
 
 export async function POST() {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!session?.localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const config = await prisma.configuracion.findUnique({
     where: { localId: session.localId },
