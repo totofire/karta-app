@@ -2,15 +2,27 @@
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
 import MercadoPagoConnect from "@/components/MercadoPagoConnect";
+import StockToggle from "@/components/StockToggle";
 
-export const dynamic = "force-dynamic"; // ← ESTO FALTABA
+export const dynamic = "force-dynamic";
 
 export default async function ConfiguracionPage({ searchParams }: any) {
   const localId = await getLocalId();
-  const local = localId ? await prisma.local.findUnique({
-    where: { id: localId },
-    select: { mpEmail: true, mpConectadoEn: true },
-  }) : null;
+
+  const [local, config] = await Promise.all([
+    localId
+      ? prisma.local.findUnique({
+          where: { id: localId },
+          select: { mpEmail: true, mpConectadoEn: true },
+        })
+      : null,
+    localId
+      ? prisma.configuracion.findUnique({
+          where: { localId },
+          select: { usaStock: true },
+        })
+      : null,
+  ]);
 
   return (
     <div className="max-w-lg mx-auto space-y-6 p-6">
@@ -26,6 +38,8 @@ export default async function ConfiguracionPage({ searchParams }: any) {
           ❌ Error al conectar Mercado Pago. Intentá de nuevo.
         </div>
       )}
+
+      <StockToggle usaStock={config?.usaStock ?? false} />
 
       <MercadoPagoConnect
         mpEmail={local?.mpEmail ?? null}

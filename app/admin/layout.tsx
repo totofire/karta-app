@@ -26,6 +26,7 @@ import {
   BarChart2,
   Users,
   Power,
+  Settings,
 } from "lucide-react";
 
 const fetcher        = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);
@@ -225,18 +226,35 @@ useEffect(() => {
   };
 
   // ── MENÚ ──────────────────────────────────────────────────────────────────
-  const menuItems = [
-    { name: "Panel General",     href: "/admin",            icon: LayoutDashboard },
-    { name: "Cocina en Vivo",    href: "/admin/cocina",     icon: ChefHat,         badge: pendientesCocina },
-    { name: "Barra / Bebidas",   href: "/admin/barra",      icon: GlassWater,      badge: pendientesBarra  },
-    { name: "Mesas y Zonas",     href: "/admin/mesas",      icon: Armchair },
-    { name: "Categorías",        href: "/admin/categorias", icon: Tags },
-    { name: "Productos y Carta", href: "/admin/productos",  icon: UtensilsCrossed },
-    { name: "Códigos QR",        href: "/admin/qr",         icon: QrCode },
-    { name: "Historial Ventas",  href: "/admin/historial",  icon: History },
-    { name: "Métricas",          href: "/admin/analytics",  icon: BarChart2 },
-    { name: "Equipo",            href: "/admin/equipo",     icon: Users },
+  const menuGroups = [
+    {
+      label: "Operaciones",
+      items: [
+        { name: "Panel General",   href: "/admin",        icon: LayoutDashboard },
+        { name: "Cocina",          href: "/admin/cocina", icon: ChefHat,    badge: pendientesCocina },
+        { name: "Barra",           href: "/admin/barra",  icon: GlassWater, badge: pendientesBarra  },
+        { name: "Mesas y Zonas",   href: "/admin/mesas",  icon: Armchair },
+      ],
+    },
+    {
+      label: "Carta",
+      items: [
+        { name: "Categorías",  href: "/admin/categorias", icon: Tags },
+        { name: "Productos",   href: "/admin/productos",  icon: UtensilsCrossed },
+        { name: "Códigos QR",  href: "/admin/qr",         icon: QrCode },
+      ],
+    },
+    {
+      label: "Negocio",
+      items: [
+        { name: "Historial",      href: "/admin/historial",     icon: History },
+        { name: "Métricas",       href: "/admin/analytics",     icon: BarChart2 },
+        { name: "Equipo",         href: "/admin/equipo",        icon: Users },
+        { name: "Configuración",  href: "/admin/configuracion", icon: Settings },
+      ],
+    },
   ];
+  const menuItems = menuGroups.flatMap((g) => g.items);
 
   return (
     <div className="min-h-screen bg-gray-50 flex transition-all duration-300">
@@ -276,40 +294,56 @@ useEffect(() => {
           {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <nav className="flex-1 p-3 space-y-1 mt-4 overflow-visible">
-          {menuItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`
-                  flex items-center rounded-xl transition-all font-bold text-sm h-12 relative group
-                  ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"}
-                  ${isActive ? "bg-red-50 text-red-600 shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"}
-                `}
-              >
-                <div className="relative flex-shrink-0 z-10">
-                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                  {item.badge && item.badge > 0 ? (
-                    <span className="absolute -top-1.5 -right-2 bg-red-600 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-2 ring-white animate-in zoom-in">
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </div>
-                <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-10 w-0 absolute"}`}>
-                  {item.name}
-                </span>
-                {!isSidebarOpen && (
-                  <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
-                    {item.name}
-                    <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
-                  </div>
+        <nav className="flex-1 p-3 mt-2 overflow-y-auto overflow-x-visible space-y-4">
+          {menuGroups.map((group) => (
+            <div key={group.label}>
+              {/* Etiqueta de sección */}
+              <div className={`mb-1 transition-all duration-300 ${isSidebarOpen ? "px-3" : "flex justify-center"}`}>
+                {isSidebarOpen ? (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    {group.label}
+                  </span>
+                ) : (
+                  <div className="w-6 h-px bg-gray-200" />
                 )}
-              </Link>
-            );
-          })}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = pathname === item.href;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`
+                        flex items-center rounded-xl transition-all font-bold text-sm h-10 relative group
+                        ${isSidebarOpen ? "px-3 gap-3" : "justify-center px-0"}
+                        ${isActive ? "bg-red-50 text-red-600 shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"}
+                      `}
+                    >
+                      <div className="relative flex-shrink-0 z-10">
+                        <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                        {"badge" in item && item.badge && item.badge > 0 ? (
+                          <span className="absolute -top-1.5 -right-2 bg-red-600 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-black shadow-sm ring-2 ring-white animate-in zoom-in">
+                            {item.badge}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-10 w-0 absolute"}`}>
+                        {item.name}
+                      </span>
+                      {!isSidebarOpen && (
+                        <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
+                          {item.name}
+                          <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="p-3 border-t border-gray-100 bg-white z-20 space-y-1">

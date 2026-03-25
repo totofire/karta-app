@@ -39,13 +39,19 @@ export async function POST(request: Request) {
 
     // 4. BUSCAR PRECIOS REALES (Asegurando que sean productos de ESTE local)
     const idsProductos = productos.map((p: ProductoRequest) => p.productoId);
-    
-    const productosDb = await prisma.producto.findMany({
-      where: { 
-        id: { in: idsProductos },
-        localId: localIdDelBar // <--- SEGURIDAD: Solo productos de este bar
-      }
-    });
+
+    const [productosDb, configuracion] = await Promise.all([
+      prisma.producto.findMany({
+        where: {
+          id: { in: idsProductos },
+          localId: localIdDelBar, // <--- SEGURIDAD: Solo productos de este bar
+        },
+      }),
+      prisma.configuracion.findUnique({
+        where: { localId: localIdDelBar },
+        select: { usaStock: true },
+      }),
+    ]);
 
     // 5. ARMAR ITEMS
     const itemsParaGuardar = productos.map((prodFront: ProductoRequest) => {
@@ -72,24 +78,35 @@ export async function POST(request: Request) {
         ? nombreCliente 
         : `Mesa ${sesion.mesa.nombre}`;
 
-    // 6. GUARDAR PEDIDO (Inyectando localId)
-    const nuevoPedido = await prisma.pedido.create({
-      data: {
-        sesionId: sesion.id,
-        localId: localIdDelBar, // <--- IMPORTANTÍSIMO para que la cocina lo vea
-        nombreCliente: nombreFinal, 
-        estado: "PENDIENTE",
-        items: {
-          create: itemsParaGuardar
-        }
-      },
-      include: {
-        items: {
-          include: { producto: true }
-        } 
-      }
-    });
-  
+    // 6. GUARDAR PEDIDO + DECREMENTAR STOCK (en transacción)
+    const operacionesStock = configuracion?.usaStock
+      ? itemsParaGuardar
+          .filter((item: any) => {
+            const prod = productosDb.find((p: any) => p.id === item.productoId);
+            return prod && prod.stockActual !== null;
+          })
+          .map((item: any) =>
+            prisma.producto.update({
+              where: { id: item.productoId },
+              data: { stockActual: { decrement: item.cantidad } },
+            })
+          )
+      : [];
+
+    const [nuevoPedido] = await prisma.$transaction([
+      prisma.pedido.create({
+        data: {
+          sesionId: sesion.id,
+          localId: localIdDelBar,
+          nombreCliente: nombreFinal,
+          estado: "PENDIENTE",
+          items: { create: itemsParaGuardar },
+        },
+        include: { items: { include: { producto: true } } },
+      }),
+      ...operacionesStock,
+    ]);
+
     return NextResponse.json({ success: true, pedidoId: nuevoPedido.id });
 
   } catch (error) {

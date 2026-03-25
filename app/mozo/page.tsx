@@ -21,11 +21,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
-import { notify } from "@/lib/notify";
 import { audioManager } from "@/lib/audio";
-import { supabase } from "@/lib/supabase";
-import type { PedidoPayload } from "@/lib/supabase-types";
-import MesasListener from "@/components/MesasListener";
+import MozoListener from "@/components/MozoListener";
 import NotificationsManager from "@/components/NotificationsManager";
 
 type TipoPedido = "cocina" | "barra" | "ambos";
@@ -110,84 +107,12 @@ export default function PanelMozo() {
 
   // Audio gestionado por audioManager (NotificationsManager lo desbloquea)
 
-  // ── Diff SWR: detectar pideCuenta ──────────────────────
-  const prevMesasRef          = useRef<any[]>([]);
-  const inicializado          = useRef(false);
-  const cuentasNotificadasRef = useRef<Set<number>>(new Set());
+  // Ref a los datos de mesas para que MozoListener pueda leer nombres sin re-suscribirse
+  const mesasDataRef = useRef<any[]>([]);
+  useEffect(() => { mesasDataRef.current = mesas; }, [mesas]);
 
-  useEffect(() => {
-    if (!Array.isArray(mesas) || mesas.length === 0) return;
-
-    if (!inicializado.current) {
-      prevMesasRef.current = mesas;
-      inicializado.current = true;
-      return;
-    }
-
-    const prev = prevMesasRef.current;
-    mesas.forEach((mesa: any) => {
-      const anterior = prev.find((m: any) => m.id === mesa.id);
-      if (!anterior) return;
-
-      if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
-        const key = mesa.id;
-        if (!cuentasNotificadasRef.current.has(key)) {
-          cuentasNotificadasRef.current.add(key);
-          setTimeout(() => cuentasNotificadasRef.current.delete(key), 15_000);
-          audioManager.play("caja");
-          navigator.vibrate?.([300, 100, 300]);
-          notify.atencion("¡Piden la cuenta!", mesa.nombre);
-        }
-      }
-    });
-
-    prevMesasRef.current = mesas;
-  }, [mesas]);
-
-  // ── WebSocket: Pedido (solo para "pedido listo") ───────
-  // Mesa y Sesion los maneja <MesasListener /> (con filtro por localId).
-  // Este canal solo escucha Pedido para detectar la transición a ENTREGADO
-  // y mostrar la notificación al mozo.
-  useEffect(() => {
-    console.log("🔌 Conectando canal mozo-pedidos-realtime...");
-
-    const canal = supabase
-      .channel("mozo-pedidos-realtime")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "Pedido" },
-        async (payload) => {
-          const newRecord = payload.new as PedidoPayload;
-          const oldRecord = payload.old as PedidoPayload;
-
-          // Siempre refrescar (total de mesa puede cambiar)
-          mutateRef.current();
-
-          // Pedido listo: transición hacia ENTREGADO
-          if (newRecord.estado !== "ENTREGADO" || oldRecord.estado === "ENTREGADO") return;
-          if (newRecord.id === undefined) return;
-
-          try {
-            const res = await fetch(`/api/mozo/pedido-listo?pedidoId=${newRecord.id}`);
-            if (!res.ok) return;
-            const { mesaId, mesaNombre, tipo } = await res.json();
-
-            audioManager.play("ding");
-            navigator.vibrate?.([100, 50, 200]);
-            notify.pedidoListo(mesaNombre, tipo);
-            setPedidosListos((prev) => new Map(prev).set(mesaId, tipo));
-          } catch {}
-        },
-      )
-      .subscribe((status) => {
-        console.log("📡 [mozo-pedidos] Estado:", status);
-      });
-
-    return () => {
-      console.log("🔌 Desconectando canal mozo-pedidos-realtime");
-      supabase.removeChannel(canal);
-    };
-  }, []);
+  // Toda la lógica de tiempo real está en <MozoListener />
+  // (nuevo pedido, pedido listo, solicitaCuenta, cambios de mesa/sesión)
 
   // ── Acciones ────────────────────────────────────────────
   const confirmarCobro = async () => {
@@ -281,9 +206,16 @@ export default function PanelMozo() {
       {/* Notificaciones nativas del OS + desbloqueo de audio */}
       <NotificationsManager />
 
-      {/* MesasListener: Mesa + Sesion filtrados por localId */}
+      {/* MozoListener: canal único con todos los eventos en tiempo real */}
       {localId && (
-        <MesasListener localId={localId} onUpdate={() => mutateRef.current()} />
+        <MozoListener
+          localId={localId}
+          mesasRef={mesasDataRef}
+          onUpdate={() => mutateRef.current()}
+          onPedidoListo={(mesaId, tipo) =>
+            setPedidosListos((prev) => new Map(prev).set(mesaId, tipo))
+          }
+        />
       )}
 
       {/* ── HEADER ─────────────────────────────────────────── */}

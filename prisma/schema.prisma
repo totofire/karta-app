@@ -102,6 +102,7 @@ model Configuracion {
   horaApertura String  @default("08:00")
   horaCierre   String  @default("00:00")
   cajaAbierta  Boolean @default(true)
+  usaStock     Boolean @default(false)
 
   localId      Int     @unique
   local        Local   @relation(fields: [localId], references: [id])
@@ -164,6 +165,7 @@ model Producto {
   imagen      String?
   activo      Boolean @default(true)
   orden       Int     @default(0)
+  stockActual Int?    // null = sin control de stock; 0 = agotado; N = disponible
 
   categoriaId Int
   categoria   Categoria @relation(fields: [categoriaId], references: [id])

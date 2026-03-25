@@ -117,12 +117,22 @@ export default async function Page({
       }
     }
 
+    const configStock = await prisma.configuracion.findUnique({
+      where: { localId: sesionActiva.localId },
+      select: { usaStock: true },
+    });
+
+    const productoWhere: Record<string, unknown> = { activo: true };
+    if (configStock?.usaStock) {
+      productoWhere.OR = [{ stockActual: null }, { stockActual: { gt: 0 } }];
+    }
+
     const [categorias, pedidos] = await Promise.all([
       prisma.categoria.findMany({
         where: { localId: sesionActiva.localId },
         include: {
           productos: {
-            where: { activo: true },
+            where: productoWhere,
             orderBy: { orden: "asc" },
           },
         },

@@ -45,6 +45,10 @@ export async function PATCH(
         datosAActualizar.imagen = body.imagen;
     }
 
+    if (body.stockActual !== undefined) {
+        datosAActualizar.stockActual = body.stockActual === null ? null : Number(body.stockActual);
+    }
+
     const productoActualizado = await prisma.producto.update({
       where: { id: Number(id) },
       data: datosAActualizar,

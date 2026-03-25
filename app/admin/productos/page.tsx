@@ -1,29 +1,31 @@
 "use client";
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { 
-  Plus, 
-  Search, 
-  UtensilsCrossed, 
-  DollarSign, 
-  Tag, 
-  FileText, 
-  Edit2, 
-  Save, 
-  X, 
-  Check, 
+import {
+  Plus,
+  Search,
+  UtensilsCrossed,
+  DollarSign,
+  Tag,
+  FileText,
+  Edit2,
+  Save,
+  X,
+  Check,
   Power,
   Image as ImageIcon,
   UploadCloud,
+  Package,
+  PackageX,
 } from "lucide-react";
 
-// Definimos el tipo con imagen incluida
 type ProductForm = {
   nombre: string;
   precio: number | "";
   categoriaId: number;
   descripcion: string;
-  imagen: string; // ✅ NUEVO
+  imagen: string;
+  stockActual: number | "" | null;
 };
 
 const CLOUD_NAME = "dkplcyfqr"; 
@@ -34,37 +36,45 @@ export default function ProductosPage() {
   const [editando, setEditando] = useState<number | null>(null);
   const [creando, setCreando] = useState(false);
   const [cargando, setCargando] = useState(true);
-  const [subiendoImg, setSubiendoImg] = useState(false); // ✅ NUEVO
+  const [subiendoImg, setSubiendoImg] = useState(false);
+  const [usaStock, setUsaStock] = useState(false);
 
-  // Estado para editar (con imagen)
-  const [form, setForm] = useState<ProductForm>({ 
-    precio: 0, 
-    nombre: "", 
-    categoriaId: 0, 
+  const [form, setForm] = useState<ProductForm>({
+    precio: 0,
+    nombre: "",
+    categoriaId: 0,
     descripcion: "",
-    imagen: "" // ✅ NUEVO
+    imagen: "",
+    stockActual: null,
   });
 
-  // Estado para crear nuevo (con imagen)
   const [nuevoProducto, setNuevoProducto] = useState<ProductForm>({
     nombre: "",
     precio: "",
     categoriaId: 1,
     descripcion: "",
-    imagen: "" // ✅ NUEVO
+    imagen: "",
+    stockActual: null,
   });
 
   const cargarProductos = async () => {
     try {
-      const res = await fetch("/api/admin/productos");
-      if (res.ok) {
-        const data = await res.json();
+      const [resProductos, resConfig] = await Promise.all([
+        fetch("/api/admin/productos"),
+        fetch("/api/admin/configuracion"),
+      ]);
+      if (resProductos.ok) {
+        const data = await resProductos.json();
         setCategorias(data);
         if (data.length > 0 && nuevoProducto.categoriaId === 1) {
-             setNuevoProducto(prev => ({...prev, categoriaId: data[0].id}));
+          setNuevoProducto((prev) => ({ ...prev, categoriaId: data[0].id }));
         }
       }
-    } catch (e) {
+      if (resConfig.ok) {
+        const cfg = await resConfig.json();
+        setUsaStock(cfg.usaStock ?? false);
+      }
+    } catch {
       toast.error("Error de conexión");
     } finally {
       setCargando(false);
@@ -116,12 +126,13 @@ export default function ProductosPage() {
   // --- FUNCIONES DE EDICIÓN ---
   const iniciarEdicion = (prod: any) => {
     setEditando(prod.id);
-    setForm({ 
-        precio: prod.precio, 
-        nombre: prod.nombre, 
-        descripcion: prod.descripcion || "", 
-        categoriaId: prod.categoriaId,
-        imagen: prod.imagen || "" // ✅ CARGAR IMAGEN
+    setForm({
+      precio: prod.precio,
+      nombre: prod.nombre,
+      descripcion: prod.descripcion || "",
+      categoriaId: prod.categoriaId,
+      imagen: prod.imagen || "",
+      stockActual: prod.stockActual ?? null,
     });
   };
 
@@ -173,7 +184,8 @@ export default function ProductosPage() {
       precio: "",
       categoriaId: categorias[0]?.id || 1,
       descripcion: "",
-      imagen: "" // ✅ RESETEAR IMAGEN
+      imagen: "",
+      stockActual: null,
     });
     cargarProductos();
   };
@@ -301,7 +313,7 @@ export default function ProductosPage() {
                 </div>
 
                 {/* Descripción */}
-                <div className="md:col-span-12 space-y-1">
+                <div className={`space-y-1 ${usaStock ? "md:col-span-9" : "md:col-span-12"}`}>
                     <label className="text-xs font-bold text-gray-400 uppercase">Descripción (Opcional)</label>
                     <div className="relative">
                         <FileText className="absolute left-3 top-3 text-gray-400" size={16} />
@@ -313,6 +325,30 @@ export default function ProductosPage() {
                         />
                     </div>
                 </div>
+
+                {/* Stock (solo si usaStock) */}
+                {usaStock && (
+                  <div className="md:col-span-3 space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase">Stock inicial</label>
+                    <div className="relative">
+                      <Package className="absolute left-3 top-3 text-gray-400" size={16} />
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        placeholder="Sin límite"
+                        value={nuevoProducto.stockActual ?? ""}
+                        onChange={(e) =>
+                          setNuevoProducto({
+                            ...nuevoProducto,
+                            stockActual: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-400">Vacío = sin control</p>
+                  </div>
+                )}
 
             </div>
 
@@ -402,32 +438,52 @@ export default function ProductosPage() {
                   {editando === prod.id ? (
                     /* MODO EDICIÓN */
                     <div className="space-y-3">
-                      <input 
+                      <input
                         autoFocus
                         className="w-full font-bold text-lg border-b border-gray-200 focus:border-red-500 outline-none pb-1"
                         value={form.nombre}
-                        onChange={(e) => setForm({...form, nombre: e.target.value})}
+                        onChange={(e) => setForm({ ...form, nombre: e.target.value })}
                       />
-                      <input 
+                      <input
                         className="w-full text-sm text-gray-500 border-b border-gray-200 focus:border-red-500 outline-none pb-1"
                         placeholder="Descripción..."
                         value={form.descripcion}
-                        onChange={(e) => setForm({...form, descripcion: e.target.value})}
+                        onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
                       />
                       <div className="flex gap-2">
-                          <div className="relative flex-1">
-                              <DollarSign className="absolute left-2 top-2 text-gray-400" size={14} />
-                              <input 
-                                  type="number" 
-                                  className="w-full pl-6 py-1.5 bg-gray-50 rounded-lg font-bold text-gray-800 outline-none"
-                                  value={form.precio}
-                                  onChange={(e) => setForm({...form, precio: e.target.value === "" ? "" : Number(e.target.value)})}
-                              />
+                        <div className="relative flex-1">
+                          <DollarSign className="absolute left-2 top-2 text-gray-400" size={14} />
+                          <input
+                            type="number"
+                            className="w-full pl-6 py-1.5 bg-gray-50 rounded-lg font-bold text-gray-800 outline-none"
+                            value={form.precio}
+                            onChange={(e) =>
+                              setForm({ ...form, precio: e.target.value === "" ? "" : Number(e.target.value) })
+                            }
+                          />
+                        </div>
+                        {usaStock && (
+                          <div className="relative w-24" title="Stock disponible">
+                            <Package className="absolute left-2 top-2 text-blue-400" size={14} />
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="∞"
+                              className="w-full pl-6 py-1.5 bg-blue-50 rounded-lg font-bold text-blue-700 outline-none text-sm"
+                              value={form.stockActual ?? ""}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  stockActual: e.target.value === "" ? null : Number(e.target.value),
+                                })
+                              }
+                            />
                           </div>
+                        )}
                       </div>
                       <div className="flex justify-end gap-2 pt-2">
-                          <button onClick={() => setEditando(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><X size={18}/></button>
-                          <button onClick={() => guardarCambios(prod.id)} className="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600"><Save size={18}/></button>
+                        <button onClick={() => setEditando(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+                        <button onClick={() => guardarCambios(prod.id)} className="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600"><Save size={18} /></button>
                       </div>
                     </div>
                   ) : (
@@ -442,26 +498,47 @@ export default function ProductosPage() {
                       </p>
                       
                       <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-                          <button 
-                              onClick={() => toggleActivo(prod)}
-                              className={`
-                                  text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors
-                                  ${prod.activo 
-                                      ? 'bg-green-50 text-green-700 hover:bg-green-100' 
-                                      : 'bg-red-50 text-red-700 hover:bg-red-100'}
-                              `}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => toggleActivo(prod)}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+                              prod.activo
+                                ? "bg-green-50 text-green-700 hover:bg-green-100"
+                                : "bg-red-50 text-red-700 hover:bg-red-100"
+                            }`}
                           >
-                              <Power size={14} />
-                              {prod.activo ? 'EN STOCK' : 'AGOTADO'}
+                            <Power size={14} />
+                            {prod.activo ? "ACTIVO" : "INACTIVO"}
                           </button>
-
-                          <button 
-                              onClick={() => iniciarEdicion(prod)} 
-                              className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
-                              title="Editar plato"
-                          >
-                              <Edit2 size={16} />
-                          </button>
+                          {usaStock && (
+                            <span
+                              className={`text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${
+                                prod.stockActual === null
+                                  ? "bg-gray-100 text-gray-500"
+                                  : prod.stockActual === 0
+                                  ? "bg-red-100 text-red-600"
+                                  : prod.stockActual <= 3
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-blue-50 text-blue-600"
+                              }`}
+                            >
+                              {prod.stockActual === null ? (
+                                <><Package size={12} /> ∞</>
+                              ) : prod.stockActual === 0 ? (
+                                <><PackageX size={12} /> Agotado</>
+                              ) : (
+                                <><Package size={12} /> {prod.stockActual}</>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => iniciarEdicion(prod)}
+                          className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                          title="Editar plato"
+                        >
+                          <Edit2 size={16} />
+                        </button>
                       </div>
                     </>
                   )}

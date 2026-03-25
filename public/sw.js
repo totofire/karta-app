@@ -1,7 +1,7 @@
 // Karta PWA — Service Worker
 // Estrategia: Network First para API, Cache First para assets estáticos
 
-const CACHE_VERSION = "karta-mozo-v1";
+const CACHE_VERSION = "karta-mozo-v2";
 const OFFLINE_URL = "/offline";
 
 const PRECACHE_URLS = [
@@ -69,6 +69,38 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+});
+
+// ── Mensajes desde la página (postMessage) ────────────────────────────────
+// La página puede enviar { type: "NOTIFY", title, body, tag } al SW
+// para mostrar una notificación nativa aunque la pestaña esté en background.
+self.addEventListener("message", (event) => {
+  if (!event.data || event.data.type !== "NOTIFY") return;
+  const { title, body, tag } = event.data;
+  if (!title) return;
+  self.registration.showNotification(title, {
+    body: body ?? "",
+    icon: "/icons/web-app-manifest-192x192.png",
+    badge: "/icons/web-app-manifest-192x192.png",
+    tag: tag ?? title,
+    renotify: true,
+    data: { url: "/mozo" },
+  });
+});
+
+// ── Click en notificación del SW ───────────────────────────────────────────
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url ?? "/mozo";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const mozoClient = clients.find((c) => c.url.includes("/mozo"));
+        if (mozoClient) return mozoClient.focus();
+        return self.clients.openWindow(url);
+      })
+  );
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
