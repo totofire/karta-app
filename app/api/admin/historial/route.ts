@@ -46,7 +46,7 @@ export async function GET(req: Request) {
         SELECT
           EXTRACT(DAY FROM "fechaFin")::int AS dia,
           SUM("totalVenta")::int            AS total
-        FROM "Sesion"
+        FROM "sesion"
         WHERE
           "localId" = ${localId}
           AND "fechaFin" >= ${startDate}

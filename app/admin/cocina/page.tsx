@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
-import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle } from "lucide-react";
+import { CheckCircle2, ChefHat, Clock, Printer, AlertCircle, XCircle, AlertTriangle } from "lucide-react";
 import KDSListener from "@/components/KDSListener";
 
 const Reloj = ({ fecha }: { fecha: string }) => {
@@ -13,7 +13,7 @@ const Reloj = ({ fecha }: { fecha: string }) => {
   return <span>{hora}</span>;
 };
 
-const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
+const TiempoTranscurrido = ({ fecha, umbral }: { fecha: string; umbral: number }) => {
   const [minutos, setMinutos] = useState(0);
   useEffect(() => {
     const calcular = () => {
@@ -25,10 +25,12 @@ const TiempoTranscurrido = ({ fecha }: { fecha: string }) => {
     return () => clearInterval(intervalo);
   }, [fecha]);
 
+  const demorado = minutos >= umbral;
   return (
-    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-      minutos > 15 ? "bg-red-100 text-red-600 animate-pulse" : "bg-gray-100 text-gray-500"
+    <span className={`text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1 ${
+      demorado ? "bg-red-500 text-white animate-pulse" : "bg-gray-100 text-gray-500"
     }`}>
+      {demorado && <AlertTriangle size={11} />}
       {minutos < 1 ? "Ahora" : `${minutos} min`}
     </span>
   );
@@ -38,14 +40,21 @@ const fetcher = (url: string) => fetch(url).then(async (res) => {
   if (!res.ok) return [];
   return res.json();
 });
+const fetcherConfig = (url: string) => fetch(url).then(r => r.ok ? r.json() : null);
 
 export default function CocinaPage() {
   const { data: pedidosRaw = [], mutate } = useSWR("/api/cocina", fetcher, {
     revalidateOnFocus: true,
     fallbackData: []
   });
+  const { data: config } = useSWR("/api/admin/configuracion", fetcherConfig, { revalidateOnFocus: false });
+  const umbral: number = config?.alertaKdsMinutos ?? 15;
 
   const pedidos = Array.isArray(pedidosRaw) ? pedidosRaw : [];
+  const demorados = pedidos.filter((p: any) => {
+    const mins = Math.floor((new Date().getTime() - new Date(p.fecha).getTime()) / 60000);
+    return mins >= umbral;
+  }).length;
 
   // Ref compartido con KDSListener para no mostrar toast de cancelación
   // cuando el propio KDS fue quien canceló el pedido.
@@ -168,11 +177,17 @@ export default function CocinaPage() {
           </div>
         </div>
         
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <div className="bg-slate-800 px-6 py-2 rounded-xl border border-slate-700 text-center shadow-sm">
             <span className="block text-3xl font-black text-white">{pedidos.length}</span>
             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Pendientes</span>
           </div>
+          {demorados > 0 && (
+            <div className="bg-red-600 px-6 py-2 rounded-xl border border-red-500 text-center shadow-sm animate-pulse">
+              <span className="block text-3xl font-black text-white">{demorados}</span>
+              <span className="text-[10px] text-red-200 uppercase font-bold tracking-widest">Demorados</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -185,23 +200,26 @@ export default function CocinaPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
-          {pedidos.map((p: any) => (
-            <div 
-              key={p.id} 
+          {pedidos.map((p: any) => {
+            const minsPedido = Math.floor((new Date().getTime() - new Date(p.fecha).getTime()) / 60000);
+            const esDemorado = !p.impreso && minsPedido >= umbral;
+            return (
+            <div
+              key={p.id}
               className={`
                 relative flex flex-col rounded-xl overflow-hidden shadow-xl transition-all duration-300 animate-in zoom-in-95
-                ${p.impreso ? "bg-gray-200 border-2 border-slate-600" : "bg-white border-l-8 border-red-500"}
+                ${p.impreso ? "bg-gray-200 border-2 border-slate-600" : esDemorado ? "bg-white border-4 border-red-500 shadow-red-500/30" : "bg-white border-l-8 border-red-500"}
               `}
             >
               {/* CABECERA TICKET */}
-              <div className="p-4 border-b border-dashed border-gray-300 flex justify-between items-start bg-gray-50">
+              <div className={`p-4 border-b border-dashed border-gray-300 flex justify-between items-start ${esDemorado ? "bg-red-50" : "bg-gray-50"}`}>
                 <div>
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
                     Mesa {p.sesion.mesa.nombre}
                   </h3>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <TiempoTranscurrido fecha={p.fecha} />
+                  <TiempoTranscurrido fecha={p.fecha} umbral={umbral} />
                   <div className="flex items-center gap-1 text-slate-400 text-xs font-mono">
                     <Clock size={10} />
                     <Reloj fecha={p.fecha} />
@@ -265,7 +283,8 @@ export default function CocinaPage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

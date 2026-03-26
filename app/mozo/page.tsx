@@ -148,7 +148,7 @@ export default function PanelMozo() {
         body: JSON.stringify({ mesaId }),
       });
       const data = await res.json();
-      if (res.ok) { toast.success("Mesa abierta", { id: tid }); router.push(`/mesa/${data.token}`); }
+      if (res.ok) { toast.success("Mesa abierta", { id: tid }); router.push(`/mesa/${data.token}?from=mozo`); }
       else { toast.error(data.error || "Error", { id: tid }); setAbriendo(null); }
     } catch { toast.error("Error de red", { id: tid }); setAbriendo(null); }
   };
@@ -600,7 +600,7 @@ export default function PanelMozo() {
               <button
                 onClick={() => {
                   setModalDetalle(null);
-                  router.push(`/mesa/${modalDetalle.mesa.tokenEfimero}`);
+                  router.push(`/mesa/${modalDetalle.mesa.tokenEfimero}?from=mozo`);
                 }}
                 className="w-full py-4 rounded-2xl bg-slate-900 text-white font-black text-base flex items-center justify-center gap-2 active:scale-95 transition-all"
               >

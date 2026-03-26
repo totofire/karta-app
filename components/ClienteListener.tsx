@@ -19,7 +19,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'Pedido',
+          table: 'pedido',
           filter: `sesionId=eq.${sesionId}`,
         },
         (payload) => {

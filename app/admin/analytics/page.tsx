@@ -4,7 +4,6 @@ import TopProductos from "./TopProductos";
 import TicketSesiones from "./TicketSesiones";
 import RendimientoMesas from "./RendimientoMesas";
 import RotacionMesas from "./RotacionMesas";
-import VelocidadServicio from "./VelocidadServicio";
 import TiempoEspera from "./TiempoEspera";
 import {
   AreaChart, Area, BarChart, Bar,
@@ -12,14 +11,14 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, BarChart2, CalendarDays,
-  Minus, ShoppingBag, Trophy, Loader2, UtensilsCrossed, Clock, Armchair, Timer, RefreshCw,
+  Minus, ShoppingBag, Trophy, Loader2, UtensilsCrossed, Clock, Armchair, RefreshCw,
 } from "lucide-react";
 
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 type Range     = "7d" | "4w" | "12m";
 type ChartType = "area" | "bar";
-type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "rotacion" | "velocidad" | "espera";
+type Tab       = "ventas" | "productos" | "ticket" | "mesas" | "rotacion" | "espera";
 
 interface DataPoint {
   label: string; fecha: string; total: number; sesiones: number;
@@ -102,8 +101,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "ticket",     label: "Ticket",     icon: Clock           },
   { key: "mesas",      label: "Mesas",      icon: Armchair        },
   { key: "rotacion",   label: "Rotación",   icon: RefreshCw       },
-  { key: "velocidad",  label: "Velocidad",  icon: Timer           },
-  { key: "espera",     label: "Espera",     icon: Timer           },
+  { key: "espera",     label: "Espera",     icon: Clock           },
 ];
 
 const RANGES: { key: Range; label: string }[] = [
@@ -394,14 +392,7 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* TAB 6 — VELOCIDAD */}
-          {tab === "velocidad" && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <VelocidadServicio range={range} />
-            </div>
-          )}
-
-          {/* TAB 7 — ESPERA */}
+          {/* TAB 6 — ESPERA */}
           {tab === "espera" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <TiempoEspera range={range} />

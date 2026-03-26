@@ -138,7 +138,7 @@ useEffect(() => {
       .channel(`admin-pedidos-${localId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
+        { event: "*", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
         (payload) => {
           const eventType = payload.eventType;
           const newRecord = payload.new as PedidoPayload;
@@ -174,7 +174,7 @@ useEffect(() => {
       .channel(`admin-sesiones-${localId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "Sesion", filter: `localId=eq.${localId}` },
+        { event: "*", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
         (payload) => {
           const eventType = payload.eventType;
           const newRecord = payload.new as SesionPayload;

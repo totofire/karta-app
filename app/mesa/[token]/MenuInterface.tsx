@@ -18,7 +18,7 @@ interface ItemCarrito {
   imagen?: string;
 }
 
-export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo }: any) {
+export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo, fromMozo }: any) {
   const router = useRouter();
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -194,7 +194,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
       <header className="bg-gradient-to-br from-red-600 to-red-700 text-white shadow-xl sticky top-0 z-20">
         <div className="px-3 py-2 flex items-center justify-between border-b border-white/10 h-[70px]">
           <div className="flex items-center gap-2 h-full">
-            {esMozo && (
+            {fromMozo && (
               <button onClick={() => (window.location.href = "/mozo")} className="mr-2 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors">
                 <ArrowLeft size={20} />
               </button>

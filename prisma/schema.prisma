@@ -98,15 +98,16 @@ model Usuario {
 // --------------------------------------
 
 model Configuracion {
-  id           Int     @id @default(autoincrement())
-  horaApertura String  @default("08:00")
-  horaCierre   String  @default("00:00")
-  cajaAbierta  Boolean @default(true)
-  usaStock     Boolean @default(false)
+  id                Int     @id @default(autoincrement())
+  horaApertura      String  @default("08:00")
+  horaCierre        String  @default("00:00")
+  cajaAbierta       Boolean @default(true)
+  usaStock          Boolean @default(false)
+  alertaKdsMinutos  Int     @default(15) // Umbral en minutos para alerta visual en KDS
 
-  localId      Int     @unique
-  local        Local   @relation(fields: [localId], references: [id])
-  mapaZonas    Json?
+  localId           Int     @unique
+  local             Local   @relation(fields: [localId], references: [id])
+  mapaZonas         Json?
 }
 
 model Sector {
@@ -208,6 +209,7 @@ model Sesion {
 
   pedidos        Pedido[]
 
+  @@map("sesion")
   @@index([localId, fechaFin])
   @@index([mesaId, fechaFin])
 }
@@ -230,6 +232,7 @@ model Pedido {
 
   items         ItemPedido[]
 
+  @@map("pedido")
   @@index([localId, estado])
   @@index([sesionId])
 }

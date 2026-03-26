@@ -49,7 +49,7 @@ export async function GET(req: Request) {
           DATE_TRUNC(${groupFormat}, "fechaFin") AS periodo,
           SUM("totalVenta")::float               AS total_ventas,
           COUNT(*)                               AS cant_sesiones
-        FROM "Sesion"
+        FROM "sesion"
         WHERE
           "localId" = ${localId}
           AND "fechaFin" IS NOT NULL
@@ -160,7 +160,7 @@ export async function GET(req: Request) {
 
       const [prevRow] = await prisma.$queryRaw<{ prev_total: number }[]>`
         SELECT COALESCE(SUM("totalVenta"), 0)::float AS prev_total
-        FROM   "Sesion"
+        FROM   "sesion"
         WHERE  "localId"  = ${localId}
           AND  "fechaFin" IS NOT NULL
           AND  "fechaFin" >= ${prevStart}
@@ -225,10 +225,10 @@ export async function GET(req: Request) {
           SUM(ip.cantidad * ip.precio)::float AS ingresos,
           AVG(ip.precio)::float         AS precio_prom
         FROM "ItemPedido" ip
-        JOIN "Pedido"     pd ON pd.id        = ip."pedidoId"
+        JOIN "pedido"     pd ON pd.id        = ip."pedidoId"
         JOIN "Producto"   p  ON p.id         = ip."productoId"
         JOIN "Categoria"  c  ON c.id         = p."categoriaId"
-        JOIN "Sesion"     s  ON s.id         = pd."sesionId"
+        JOIN "sesion"     s  ON s.id         = pd."sesionId"
         WHERE
           pd."localId" = ${localId}
           AND pd.estado != 'CANCELADO'
@@ -324,7 +324,7 @@ export async function GET(req: Request) {
             EXTRACT(EPOCH FROM ("fechaFin" - "fechaInicio")) / 60
           )::float                                                    AS duracion_prom,
           SUM("totalVenta")::float                                    AS total_ventas
-        FROM "Sesion"
+        FROM "sesion"
         WHERE
           "localId"    = ${localId}
           AND "fechaFin"   IS NOT NULL
@@ -346,7 +346,7 @@ export async function GET(req: Request) {
           EXTRACT(HOUR FROM "fechaFin")::int   AS hora,
           COUNT(*)                             AS sesiones,
           AVG("totalVenta")::float             AS ticket
-        FROM "Sesion"
+        FROM "sesion"
         WHERE
           "localId"  = ${localId}
           AND "fechaFin"  IS NOT NULL
@@ -499,7 +499,7 @@ export async function GET(req: Request) {
             0
           )::int                                                        AS duracion_promedio
         FROM "Mesa" m
-        LEFT JOIN "Sesion" s
+        LEFT JOIN "sesion" s
           ON s."mesaId"   = m.id
          AND s."localId"  = ${localId}
          AND s."fechaFin" IS NOT NULL
@@ -560,10 +560,10 @@ export async function GET(req: Request) {
           COALESCE(AVG(
             EXTRACT(EPOCH FROM (s."fechaFin" - s."fechaInicio")) / 60
           ), 0)::int                                                      AS duracion_sesion
-        FROM "Sesion" s
+        FROM "sesion" s
         LEFT JOIN (
           SELECT "sesionId", MIN(fecha) AS primera_fecha
-          FROM "Pedido"
+          FROM "pedido"
           GROUP BY "sesionId"
         ) primer ON primer."sesionId" = s.id
         WHERE s."localId"  = ${localId}
@@ -609,10 +609,10 @@ export async function GET(req: Request) {
             EXTRACT(EPOCH FROM (s."fechaFin" - s."fechaInicio")) / 60
           ), 0)::int                                                           AS avg_duracion,
           COUNT(DISTINCT CASE WHEN primer."sesionId" IS NULL THEN s.id END)::int AS sesiones_sin_pedido
-        FROM "Sesion" s
+        FROM "sesion" s
         LEFT JOIN (
           SELECT "sesionId", MIN(fecha) AS primera_fecha
-          FROM "Pedido"
+          FROM "pedido"
           GROUP BY "sesionId"
         ) primer ON primer."sesionId" = s.id
         WHERE s."localId"  = ${localId}
@@ -677,7 +677,7 @@ export async function GET(req: Request) {
           MAX(
             EXTRACT(EPOCH FROM (p."fechaDespacho" - p.fecha)) / 60
           )::numeric(10,1)                                                         AS max_espera
-        FROM "Pedido" p
+        FROM "pedido" p
         WHERE
           p."localId"           = ${localId}
           AND p."fechaDespacho" IS NOT NULL
@@ -719,7 +719,7 @@ export async function GET(req: Request) {
             ELSE 'mas_20'
           END AS bucket,
           COUNT(*)::int AS cantidad
-        FROM "Pedido"
+        FROM "pedido"
         WHERE
           "localId"           = ${localId}
           AND "fechaDespacho" IS NOT NULL
@@ -764,7 +764,7 @@ export async function GET(req: Request) {
             100.0 * COUNT(CASE WHEN EXTRACT(EPOCH FROM ("fechaDespacho" - fecha)) / 60 <= 10 THEN 1 END)
             / NULLIF(COUNT(*), 0)
           )::int                                                                AS bajo_10_pct
-        FROM "Pedido"
+        FROM "pedido"
         WHERE
           "localId"           = ${localId}
           AND "fechaDespacho" IS NOT NULL
@@ -832,7 +832,7 @@ export async function GET(req: Request) {
           )::float                                                         AS duracion_promedio,
           COALESCE(AVG(s."totalVenta"), 0)::float                          AS ticket_promedio
         FROM "Mesa" m
-        LEFT JOIN "Sesion" s
+        LEFT JOIN "sesion" s
           ON s."mesaId"   = m.id
          AND s."localId"  = ${localId}
          AND s."fechaFin" IS NOT NULL
@@ -870,7 +870,7 @@ export async function GET(req: Request) {
           DATE_TRUNC(${truncUnit}, s."fechaFin")     AS periodo,
           COUNT(s.id)::int                            AS sesiones,
           COUNT(DISTINCT s."mesaId")::int              AS mesas_activas
-        FROM "Sesion" s
+        FROM "sesion" s
         WHERE s."localId"  = ${localId}
           AND s."fechaFin" IS NOT NULL
           AND s."fechaFin" >= ${startDate}

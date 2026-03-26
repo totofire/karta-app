@@ -6,7 +6,8 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get("token")?.value;
   const path  = request.nextUrl.pathname;
 
-  // ── Rutas protegidas ─────────────────────────────────────────────
+  // ── Rutas protegidas ────────────────────────
+  // ─────────────────────
   const esRutaAdmin      = path.startsWith("/admin");
   const esRutaMozo       = path.startsWith("/mozo");
   const esRutaCocina     = path.startsWith("/cocina");

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
 import MercadoPagoConnect from "@/components/MercadoPagoConnect";
 import StockToggle from "@/components/StockToggle";
+import KdsAlertaConfig from "@/components/KdsAlertaConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function ConfiguracionPage({ searchParams }: any) {
     localId
       ? prisma.configuracion.findUnique({
           where: { localId },
-          select: { usaStock: true },
+          select: { usaStock: true, alertaKdsMinutos: true },
         })
       : null,
   ]);
@@ -40,6 +41,8 @@ export default async function ConfiguracionPage({ searchParams }: any) {
       )}
 
       <StockToggle usaStock={config?.usaStock ?? false} />
+
+      <KdsAlertaConfig inicial={config?.alertaKdsMinutos ?? 15} />
 
       <MercadoPagoConnect
         mpEmail={local?.mpEmail ?? null}

@@ -33,7 +33,7 @@ export default function MesasListener({ localId, onUpdate }: MesasListenerProps)
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'Sesion', filter: `localId=eq.${localId}` },
+        { event: '*', schema: 'public', table: 'sesion', filter: `localId=eq.${localId}` },
         () => {
           console.log('[MesasListener] Sesion cambió');
           onUpdateRef.current();

@@ -44,7 +44,7 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
       .channel(`kds-${sector}-${localId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'Pedido', filter: `localId=eq.${localId}` },
+        { event: '*', schema: 'public', table: 'pedido', filter: `localId=eq.${localId}` },
         (payload) => {
           const newRecord = payload.new as { id?: number; estado?: string; impreso?: boolean };
           const oldRecord = payload.old as { id?: number; estado?: string; impreso?: boolean };

@@ -19,6 +19,7 @@ export default async function Page({
 }) {
   const { token } = await params;
   const sp = searchParams ? await searchParams : {};
+  const fromMozo = sp?.from === "mozo";
 
   // ── 0. Retorno de Mercado Pago ───────────────────────────────────────────
   if (sp?.pago === "ok") {
@@ -154,6 +155,7 @@ export default async function Page({
           tokenEfimero={sesionActiva.tokenEfimero}
           pedidosHistoricos={pedidos}
           esMozo={esMozo}
+          fromMozo={fromMozo}
           pagoEstado={sp?.pago ?? null}
         />
       </>
