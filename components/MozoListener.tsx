@@ -35,9 +35,18 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
   useEffect(() => { onPedidoListoRef.current = onPedidoListo; }, [onPedidoListo]);
 
+  const MOTIVO_LABEL: Record<string, string> = {
+    SERVILLETAS: "Servilletas",
+    ADEREZOS: "Aderezos / condimentos",
+    CUBIERTOS: "Cubiertos / utensilios",
+    CONSULTA: "Tiene una consulta",
+    OTRO: "Necesita atención",
+  };
+
   // Sets para evitar notificaciones duplicadas
   const pedidosNotif = useRef<Set<number>>(new Set());
   const cuentasNotif = useRef<Set<number>>(new Set());
+  const llamadosNotif = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!localId) return;
@@ -118,6 +127,21 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
           const o = payload.old as SesionPayload;
 
           onUpdateRef.current();
+
+          // Detectar llamado al mozo nuevo
+          if (n.llamadaMozo && !o.llamadaMozo) {
+            const keyLlamado = n.mesaId ?? 0;
+            if (!llamadosNotif.current.has(keyLlamado)) {
+              llamadosNotif.current.add(keyLlamado);
+              setTimeout(() => llamadosNotif.current.delete(keyLlamado), 15_000);
+              const nombreMesa = mesasRef.current.find((m) => m.id === n.mesaId)?.nombre ?? `#${keyLlamado}`;
+              const motivoTexto = MOTIVO_LABEL[n.llamadaMozo] ?? "Necesita atención";
+              audioManager.play("ding");
+              navigator.vibrate?.([200, 100, 200]);
+              notify.atencion("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`);
+              notificarNativo("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`, `llamado-${keyLlamado}`);
+            }
+          }
 
           // Detectar solicitud de cuenta nueva
           if (!n.solicitaCuenta || o.solicitaCuenta) return;

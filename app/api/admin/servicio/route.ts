@@ -8,29 +8,10 @@ export async function GET() {
   const session = await getSession();
   if (!session?.localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-  const config = await prisma.configuracion.findUnique({
-    where: { localId: session.localId },
-    select: { cajaAbierta: true },
+  const turnoActivo = await prisma.turno.findFirst({
+    where: { localId: session.localId, fechaCierre: null },
+    select: { id: true },
   });
 
-  return NextResponse.json({ cajaAbierta: config?.cajaAbierta ?? true });
-}
-
-export async function POST() {
-  const session = await getSession();
-  if (!session?.localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-
-  const config = await prisma.configuracion.findUnique({
-    where: { localId: session.localId },
-    select: { cajaAbierta: true },
-  });
-
-  const nuevo = !(config?.cajaAbierta ?? true);
-
-  const updated = await prisma.configuracion.update({
-    where: { localId: session.localId },
-    data: { cajaAbierta: nuevo },
-  });
-
-  return NextResponse.json({ cajaAbierta: updated.cajaAbierta });
+  return NextResponse.json({ cajaAbierta: turnoActivo !== null });
 }

@@ -3,7 +3,10 @@
     "allow": [
       "mcp__supabase__apply_migration",
       "mcp__supabase__execute_sql",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(C:/Users/tomi0/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.6/scripts/start-server.sh --project-dir C:/Users/tomi0/sistema-pedidos)",
+      "Bash(cat \"C:/Users/tomi0/sistema-pedidos/.superpowers/brainstorm/\"*/state/server-info)",
+      "mcp__claude_ai_Supabase__execute_sql"
     ]
   },
   "enableAllProjectMcpServers": true,

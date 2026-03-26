@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { obtenerReglasActivas, aplicarReglasAItems } from "@/lib/descuentos";
 
 interface ProductoRequest {
   productoId: number;
@@ -40,37 +41,43 @@ export async function POST(request: Request) {
     // 4. BUSCAR PRECIOS REALES (Asegurando que sean productos de ESTE local)
     const idsProductos = productos.map((p: ProductoRequest) => p.productoId);
 
-    const [productosDb, configuracion] = await Promise.all([
+    const [productosDb, configuracion, reglasActivas] = await Promise.all([
       prisma.producto.findMany({
         where: {
           id: { in: idsProductos },
-          localId: localIdDelBar, // <--- SEGURIDAD: Solo productos de este bar
+          localId: localIdDelBar,
         },
       }),
       prisma.configuracion.findUnique({
         where: { localId: localIdDelBar },
         select: { usaStock: true },
       }),
+      obtenerReglasActivas(localIdDelBar),
     ]);
 
     // 5. ARMAR ITEMS
-    const itemsParaGuardar = productos.map((prodFront: ProductoRequest) => {
-      // Verificamos que el producto exista en la lista aprobada
+    const itemsBase = productos.map((prodFront: ProductoRequest) => {
       const infoReal = productosDb.find((p: any) => p.id === prodFront.productoId);
-      
-      if (!infoReal) return null; // Si intenta pedir un producto de otro bar, lo ignoramos
+      if (!infoReal) return null;
 
       return {
         productoId: prodFront.productoId,
         cantidad: prodFront.cantidad,
         precio: infoReal.precio,
-        observaciones: prodFront.observaciones || ""
+        observaciones: prodFront.observaciones || "",
+        categoriaId: infoReal.categoriaId,
       };
-    }).filter((item: any) => item !== null); // Filtramos nulos
+    }).filter((item: any) => item !== null);
 
-    if (itemsParaGuardar.length === 0) {
-        return NextResponse.json({ error: "Productos no válidos para este local" }, { status: 400 });
+    if (itemsBase.length === 0) {
+      return NextResponse.json({ error: "Productos no válidos para este local" }, { status: 400 });
     }
+
+    // Aplicar reglas de descuento item-level (2X1, PRECIO_ESPECIAL, PORCENTAJE por item)
+    const itemsConDescuento = aplicarReglasAItems(itemsBase, reglasActivas);
+
+    // Separar categoriaId (campo interno, no va a la BD de ItemPedido)
+    const itemsParaGuardar = itemsConDescuento.map(({ categoriaId: _cat, ...item }) => item);
 
     // 🔥 ASIGNACIÓN AUTOMÁTICA DE NOMBRE SI ES NULL
     // Si no viene nombre, usamos el nombre de la mesa (Ej: "Mesa 4")

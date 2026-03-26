@@ -62,14 +62,17 @@ model Local {
   mpEmail        String?     // Email de la cuenta MP conectada
   mpConectadoEn  DateTime?   // Fecha en que se conectó MP
 
-  usuarios      Usuario[]
-  mesas         Mesa[]
-  sectores      Sector[]
-  categorias    Categoria[]
-  productos     Producto[]
-  sesiones      Sesion[]
-  pedidos       Pedido[]
-  configuracion Configuracion?
+  usuarios        Usuario[]
+  mesas           Mesa[]
+  sectores        Sector[]
+  categorias      Categoria[]
+  productos       Producto[]
+  sesiones        Sesion[]
+  pedidos         Pedido[]
+  configuracion   Configuracion?
+  reglasDescuento ReglaDescuento[]
+  reservas        Reserva[]
+  turnos          Turno[]
 }
 
 model Usuario {
@@ -101,7 +104,6 @@ model Configuracion {
   id                Int     @id @default(autoincrement())
   horaApertura      String  @default("08:00")
   horaCierre        String  @default("00:00")
-  cajaAbierta       Boolean @default(true)
   usaStock          Boolean @default(false)
   alertaKdsMinutos  Int     @default(15) // Umbral en minutos para alerta visual en KDS
 
@@ -136,6 +138,7 @@ model Mesa {
   local    Local   @relation(fields: [localId], references: [id])
 
   sesiones Sesion[]
+  reservas Reserva[]
 
   @@index([localId, activo])
 }
@@ -207,6 +210,9 @@ model Sesion {
   mpPaymentId    String?   // ID del pago confirmado en MP
   pagadoEn       DateTime? // Timestamp de confirmación del pago
 
+  descuentoTotal Float     @default(0)
+  llamadaMozo    String?   // "SERVILLETAS" | "ADEREZOS" | "CUBIERTOS" | "CONSULTA" | "OTRO"
+
   pedidos        Pedido[]
 
   @@map("sesion")
@@ -244,9 +250,90 @@ model ItemPedido {
   observaciones String?
   estado        String   @default("PENDIENTE") // PENDIENTE, ENTREGADO
 
+  descuentoAplicado Float  @default(0)
+
   pedidoId      Int
   pedido        Pedido   @relation(fields: [pedidoId], references: [id])
 
   productoId    Int
   producto      Producto @relation(fields: [productoId], references: [id])
+}
+
+// --------------------------------------
+// 6. DESCUENTOS
+// --------------------------------------
+
+model ReglaDescuento {
+  id          Int      @id @default(autoincrement())
+  nombre      String                         // "Happy Hour Cervezas", "2x1 Jueves"
+  tipo        String                         // "PORCENTAJE" | "2X1" | "PRECIO_ESPECIAL" | "DESCUENTO_GLOBAL"
+  valor       Float    @default(0)           // % en PORCENTAJE/GLOBAL, precio en PRECIO_ESPECIAL, ignorado en 2X1
+
+  // Scope (null = aplica a todos)
+  categoriaId Int?
+  productoId  Int?
+
+  // Condiciones temporales (null = siempre)
+  diasSemana  String?  // "1,4,5" — 1=lunes … 7=domingo
+  horaDesde   String?  // "18:00"
+  horaHasta   String?  // "20:00"
+
+  activo      Boolean  @default(true)
+
+  localId     Int
+  local       Local    @relation(fields: [localId], references: [id])
+
+  @@index([localId, activo])
+}
+
+// --------------------------------------
+// 7. TURNOS DE CAJA
+// --------------------------------------
+
+model Turno {
+  id              Int       @id @default(autoincrement())
+  localId         Int
+  local           Local     @relation(fields: [localId], references: [id])
+  creadoPor       Int                       // userId del admin que abrió
+  fechaApertura   DateTime  @default(now())
+  fechaCierre     DateTime?
+  efectivoInicial Float     @default(0)
+  efectivoFinal   Float?
+  notas           String?
+  retiros         Retiro[]
+
+  @@index([localId, fechaCierre])
+}
+
+model Retiro {
+  id          Int      @id @default(autoincrement())
+  turnoId     Int
+  turno       Turno    @relation(fields: [turnoId], references: [id])
+  monto       Float
+  descripcion String
+  fecha       DateTime @default(now())
+}
+
+// --------------------------------------
+// 8. RESERVAS
+// --------------------------------------
+
+model Reserva {
+  id       Int      @id @default(autoincrement())
+  nombre   String
+  telefono String?
+  fecha    DateTime
+  personas Int
+  estado   String   @default("PENDIENTE")  // PENDIENTE | CONFIRMADA | CANCELADA | COMPLETADA
+  notas    String?
+
+  mesaId   Int?
+  mesa     Mesa?    @relation(fields: [mesaId], references: [id])
+
+  localId  Int
+  local    Local    @relation(fields: [localId], references: [id])
+
+  creadoEn DateTime @default(now())
+
+  @@index([localId, fecha])
 }

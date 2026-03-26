@@ -25,8 +25,10 @@ import {
   GlassWater,
   BarChart2,
   Users,
-  Power,
   Settings,
+  Percent,
+  CalendarDays,
+  Vault,
 } from "lucide-react";
 
 const fetcher        = (url: string) => fetch(url).then(r => r.ok ? r.json() : []);
@@ -42,10 +44,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { data: barra  = [], mutate: mutateBarra  } = useSWR("/api/barra",        fetcher,   { revalidateOnFocus: true });
   const { data: mesas  = [], mutate: mutateMesas  } = useSWR("/api/admin/estado", fetcher,   { revalidateOnFocus: true });
   const { data: me                                } = useSWR("/api/auth/me",      fetcherMe,      { revalidateOnFocus: false });
-  const { data: servicio, mutate: mutateServicio  } = useSWR("/api/admin/servicio", fetcherServicio, { revalidateOnFocus: true });
+  const { data: servicio } = useSWR("/api/admin/servicio", fetcherServicio, { revalidateOnFocus: true });
   const localId: number | null = me?.localId ?? null;
-  const cajaAbierta: boolean = servicio?.cajaAbierta ?? true;
-  const [toggling, setToggling] = useState(false);
+  const cajaAbierta: boolean = servicio?.cajaAbierta ?? false;
 
   const pendientesCocina = Array.isArray(cocina) ? cocina.length : 0;
   const pendientesBarra  = Array.isArray(barra)  ? barra.length  : 0;
@@ -213,18 +214,6 @@ useEffect(() => {
     };
   }, [localId]);
 
-  // ── Cierre de servicio ────────────────────────────────────────────────────
-  const toggleServicio = async () => {
-    if (toggling) return;
-    setToggling(true);
-    try {
-      await fetch("/api/admin/servicio", { method: "POST" });
-      await mutateServicio();
-    } finally {
-      setToggling(false);
-    }
-  };
-
   // ── MENÚ ──────────────────────────────────────────────────────────────────
   const menuGroups = [
     {
@@ -247,6 +236,9 @@ useEffect(() => {
     {
       label: "Negocio",
       items: [
+        { name: "Caja",           href: "/admin/caja",          icon: Vault },
+        { name: "Reservas",       href: "/admin/reservas",      icon: CalendarDays },
+        { name: "Descuentos",     href: "/admin/descuentos",    icon: Percent },
         { name: "Historial",      href: "/admin/historial",     icon: History },
         { name: "Métricas",       href: "/admin/analytics",     icon: BarChart2 },
         { name: "Equipo",         href: "/admin/equipo",        icon: Users },
@@ -347,24 +339,30 @@ useEffect(() => {
         </nav>
 
         <div className="p-3 border-t border-gray-100 bg-white z-20 space-y-1">
-          {/* Toggle servicio abierto/cerrado */}
-          <button
-            onClick={toggleServicio}
-            disabled={toggling}
-            className={`flex items-center rounded-xl transition-colors font-bold text-sm h-12 w-full group relative ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"} ${cajaAbierta ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" : "text-red-600 bg-red-50 hover:bg-red-100"} disabled:opacity-60`}
-            title={cajaAbierta ? "Servicio abierto — click para cerrar" : "Servicio cerrado — click para abrir"}
+          {/* Link a caja con badge de estado */}
+          <Link
+            href="/admin/caja"
+            className={`flex items-center rounded-xl transition-colors font-bold text-sm h-12 w-full group relative ${isSidebarOpen ? "px-4 gap-3" : "justify-center px-0"} ${cajaAbierta ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" : "text-slate-500 bg-slate-50 hover:bg-slate-100"}`}
+            title={cajaAbierta ? "Caja abierta" : "Caja cerrada"}
           >
-            <Power size={20} className="flex-shrink-0 relative z-10" />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? "opacity-100" : "opacity-0 w-0 hidden"}`}>
-              {cajaAbierta ? "Servicio abierto" : "Servicio cerrado"}
-            </span>
+            <Vault size={20} className="flex-shrink-0 relative z-10" />
+            {isSidebarOpen && (
+              <span className="flex-1 whitespace-nowrap">
+                {cajaAbierta ? "Caja abierta" : "Caja cerrada"}
+              </span>
+            )}
+            {isSidebarOpen && (
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide ${cajaAbierta ? "bg-emerald-200 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>
+                {cajaAbierta ? "ABIERTA" : "CERRADA"}
+              </span>
+            )}
             {!isSidebarOpen && (
               <div className="absolute left-full ml-4 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] whitespace-nowrap shadow-xl">
-                {cajaAbierta ? "Servicio abierto" : "Servicio cerrado"}
+                {cajaAbierta ? "Caja abierta" : "Caja cerrada"}
                 <div className="absolute top-1/2 -left-1 -mt-1 w-2 h-2 bg-gray-900 rotate-45" />
               </div>
             )}
-          </button>
+          </Link>
 
           <button
             onClick={() => (window.location.href = "/api/logout")}

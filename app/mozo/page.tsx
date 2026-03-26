@@ -19,6 +19,8 @@ import {
   Trash2,
   PlusCircle,
   AlertCircle,
+  BellRing,
+  Check,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { audioManager } from "@/lib/audio";
@@ -104,6 +106,28 @@ export default function PanelMozo() {
   const [detalleSesion, setDetalleSesion] = useState<any | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cancelandoItem, setCancelandoItem] = useState<Set<number>>(new Set());
+  const [atendiendo, setAtendiendo] = useState<Set<number>>(new Set());
+
+  const MOTIVO_LABEL: Record<string, string> = {
+    SERVILLETAS: "Servilletas",
+    ADEREZOS: "Aderezos / condimentos",
+    CUBIERTOS: "Cubiertos / utensilios",
+    CONSULTA: "Tiene una consulta",
+    OTRO: "Necesita atención",
+  };
+
+  const atenderLlamado = async (sesionId: number) => {
+    setAtendiendo((prev) => new Set(prev).add(sesionId));
+    try {
+      await fetch("/api/pedidos/llamar", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sesionId }),
+      });
+      mutate();
+    } catch { toast.error("Error al descartar llamado"); }
+    finally { setAtendiendo((prev) => { const n = new Set(prev); n.delete(sesionId); return n; }); }
+  };
 
   // Audio gestionado por audioManager (NotificationsManager lo desbloquea)
 
@@ -192,6 +216,7 @@ export default function PanelMozo() {
   const mesasOcupadas = mesas.filter((m) =>  m.ocupada);
   const pidenCuenta   = mesasOcupadas.filter((m) => m.solicitaCuenta).length;
   const listasCount   = pedidosListos.size;
+  const llamadosCount = mesasOcupadas.filter((m) => m.llamadaMozo).length;
 
   const metodosLabel: Record<MetodoPago, string> = {
     QR: "📱 QR / Digital",
@@ -234,6 +259,12 @@ export default function PanelMozo() {
           </div>
 
           <div className="flex items-center gap-2">
+            {llamadosCount > 0 && (
+              <span className="bg-orange-500 text-white text-[10px] font-black px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
+                <BellRing size={10} />
+                {llamadosCount}
+              </span>
+            )}
             {pidenCuenta > 0 && (
               <span className="bg-yellow-400 text-yellow-900 text-[10px] font-black px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
                 <HandCoins size={10} />
@@ -241,7 +272,7 @@ export default function PanelMozo() {
               </span>
             )}
             {listasCount > 0 && (
-              <span className="bg-orange-500 text-white text-[10px] font-black px-2 py-1 rounded-full animate-pulse">
+              <span className="bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full animate-pulse">
                 {listasCount} listo{listasCount > 1 ? "s" : ""}
               </span>
             )}
@@ -303,9 +334,10 @@ export default function PanelMozo() {
           ) : (
             <div className="space-y-3 mt-1">
               {mesasOcupadas.map((mesa) => {
-                const pedidoListo = pedidosListos.get(mesa.id);
-                const pideCuenta  = !!mesa.solicitaCuenta;
-                const cargando    = pidiendoCuenta === mesa.id || abriendo === mesa.id;
+                const pedidoListo  = pedidosListos.get(mesa.id);
+                const pideCuenta   = !!mesa.solicitaCuenta;
+                const llamado      = mesa.llamadaMozo as string | null;
+                const cargando     = pidiendoCuenta === mesa.id || abriendo === mesa.id;
 
                 return (
                   <div
@@ -313,16 +345,38 @@ export default function PanelMozo() {
                     className={`bg-white rounded-2xl shadow-sm border-2 overflow-hidden transition-all
                       ${pideCuenta
                         ? "border-yellow-300 shadow-yellow-100"
-                        : pedidoListo
+                        : llamado
                           ? "border-orange-300 shadow-orange-100"
-                          : "border-slate-100"
+                          : pedidoListo
+                            ? "border-red-200 shadow-red-50"
+                            : "border-slate-100"
                       }`}
                   >
-                    {/* Banda superior de estado */}
+                    {/* Banda llamado al mozo */}
+                    {llamado && (
+                      <div className="px-4 py-2 flex items-center justify-between gap-2 bg-orange-500 text-white">
+                        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide">
+                          <BellRing size={12} />
+                          {MOTIVO_LABEL[llamado] ?? "Necesita atención"}
+                        </div>
+                        <button
+                          onClick={() => atenderLlamado(mesa.sesionId)}
+                          disabled={atendiendo.has(mesa.sesionId)}
+                          className="flex items-center gap-1 bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg text-[10px] font-black uppercase transition-colors active:scale-95 disabled:opacity-50"
+                        >
+                          {atendiendo.has(mesa.sesionId)
+                            ? <Loader2 size={10} className="animate-spin" />
+                            : <><Check size={10} /> Atendido</>
+                          }
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Banda superior de estado (cuenta / pedido listo) */}
                     {(pideCuenta || pedidoListo) && (
                       <div
                         className={`px-4 py-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-wide
-                          ${pideCuenta ? "bg-yellow-400 text-yellow-900" : "bg-orange-500 text-white"}`}
+                          ${pideCuenta ? "bg-yellow-400 text-yellow-900" : "bg-red-500 text-white"}`}
                       >
                         {pideCuenta ? (
                           <>
@@ -349,7 +403,7 @@ export default function PanelMozo() {
                             <CircleDot
                               size={10}
                               className={`${
-                                pideCuenta ? "text-yellow-500" : pedidoListo ? "text-orange-500" : "text-red-500"
+                                pideCuenta ? "text-yellow-500" : llamado ? "text-orange-500" : pedidoListo ? "text-red-400" : "text-red-500"
                               } animate-pulse`}
                             />
                           </div>

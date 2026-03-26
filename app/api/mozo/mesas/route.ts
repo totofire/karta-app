@@ -71,6 +71,7 @@ export async function GET() {
         solicitaCuenta: sesion?.solicitaCuenta ?? null,
         metodoPago: sesion?.metodoPago ?? null,
         tokenEfimero: sesion?.tokenEfimero ?? null,
+        llamadaMozo: sesion?.llamadaMozo ?? null,
         detalles,
       };
     });

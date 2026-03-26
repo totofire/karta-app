@@ -4,9 +4,15 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Receipt, X, CheckCircle2, ArrowLeft, Plus, Minus,
-  ShoppingCart, Clock, Flame, Loader2,
+  ShoppingCart, Clock, Flame, Loader2, Tag, BellRing,
+  Sparkles, Salad, Utensils, MessageCircle, HelpCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import {
+  type ReglaActiva,
+  descuentoParaProducto,
+  reglasGlobalesActivas,
+} from "@/lib/descuentos-utils";
 
 interface ItemCarrito {
   id: string;
@@ -18,7 +24,9 @@ interface ItemCarrito {
   imagen?: string;
 }
 
-export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo, fromMozo }: any) {
+export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosHistoricos, esMozo, fromMozo, reglasActivas = [] }: any) {
+  const reglas: ReglaActiva[] = reglasActivas;
+  const globales = reglasGlobalesActivas(reglas);
   const router = useRouter();
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -32,6 +40,44 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [cantidadModal, setCantidadModal] = useState(1);
   const [observacionesModal, setObservacionesModal] = useState("");
   const [metodoPagoSeleccionado, setMetodoPagoSeleccionado] = useState<"QR" | "TARJETA" | "EFECTIVO" | null>(null);
+
+  // ── Llamar al mozo ────────────────────────────────────────────────────────
+  const LLAMADO_KEY = `llamado-${tokenEfimero}`;
+  const [verLlamadoSheet, setVerLlamadoSheet] = useState(false);
+  const [llamadoActivo, setLlamadoActivo] = useState<string | null>(() => {
+    if (typeof window !== "undefined") return localStorage.getItem(LLAMADO_KEY);
+    return null;
+  });
+  const [enviandoLlamado, setEnviandoLlamado] = useState(false);
+
+  const MOTIVOS = [
+    { valor: "SERVILLETAS", label: "Servilletas",           icono: Sparkles },
+    { valor: "ADEREZOS",    label: "Aderezos / condimentos", icono: Salad },
+    { valor: "CUBIERTOS",   label: "Cubiertos / utensilios", icono: Utensils },
+    { valor: "CONSULTA",    label: "Tengo una consulta",     icono: MessageCircle },
+    { valor: "OTRO",        label: "Otro",                   icono: HelpCircle },
+  ] as const;
+
+  const llamarMozo = async (motivo: string) => {
+    setEnviandoLlamado(true);
+    try {
+      const res = await fetch("/api/pedidos/llamar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenEfimero, motivo }),
+      });
+      if (res.ok) {
+        setLlamadoActivo(motivo);
+        localStorage.setItem(LLAMADO_KEY, motivo);
+        setVerLlamadoSheet(false);
+        toast.success("¡El mozo ya fue avisado!");
+      } else {
+        const d = await res.json();
+        toast.error(d.error || "Error al llamar");
+      }
+    } catch { toast.error("Error de conexión"); }
+    finally { setEnviandoLlamado(false); }
+  };
 
 
 
@@ -135,11 +181,17 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   };
   const agregarAlCarrito = () => {
     if (!modalProducto) return;
+    const descuento = descuentoParaProducto(
+      modalProducto.id,
+      modalProducto.categoriaId,
+      modalProducto.precio,
+      reglas
+    );
     const nuevoItem: ItemCarrito = {
       id: `${modalProducto.id}-${Date.now()}-${Math.random()}`,
       productoId: modalProducto.id,
       nombre: modalProducto.nombre,
-      precio: modalProducto.precio,
+      precio: descuento.precioEfectivo,
       cantidad: cantidadModal,
       observaciones: observacionesModal.trim(),
       imagen: modalProducto.imagen,
@@ -228,6 +280,28 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
 
       {/* ── LISTADO DE PRODUCTOS ───────────────────────────────────────────── */}
       <main className="p-4 space-y-8">
+
+        {/* Banner de descuentos globales activos */}
+        {globales.length > 0 && (
+          <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-md">
+            <div className="bg-white/20 rounded-full p-2 flex-shrink-0">
+              <Tag size={16} />
+            </div>
+            <div>
+              <p className="font-black text-sm leading-tight">
+                {globales.map((r) =>
+                  r.tipo === "DESCUENTO_GLOBAL"
+                    ? `$${r.valor} de descuento en tu cuenta`
+                    : `${r.valor}% de descuento en toda la carta`
+                ).join(" · ")}
+              </p>
+              <p className="text-green-100 text-[11px] font-medium mt-0.5">
+                Se aplica automáticamente al cerrar la cuenta
+              </p>
+            </div>
+          </div>
+        )}
+
         {categorias.map((cat: any) => (
           <section key={cat.id} id={`cat-${cat.id}`} className="scroll-mt-32">
             <div className="flex items-center gap-2 mb-4 sticky top-[120px] bg-gray-50/95 backdrop-blur-sm p-2 z-10 -mx-2 rounded-lg">
@@ -235,37 +309,74 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               <h2 className="text-xl font-bold text-gray-800">{cat.nombre}</h2>
             </div>
             <div className="grid gap-3">
-              {cat.productos.map((prod: any) => (
-                <div key={prod.id} onClick={() => abrirModalProducto(prod)}
-                  className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-row gap-3 relative overflow-hidden group hover:shadow-md transition-all h-[120px] cursor-pointer active:scale-[0.98]">
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-600 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity z-10"></div>
-                  <div className="relative w-[100px] h-full flex-shrink-0 bg-gray-50 rounded-xl overflow-hidden">
-                    {prod.imagen ? (
-                      <Image src={prod.imagen} alt={prod.nombre} fill className="object-cover" sizes="(max-width: 768px) 100px, 150px" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+              {cat.productos.map((prod: any) => {
+                const descuento = descuentoParaProducto(prod.id, prod.categoriaId, prod.precio, reglas);
+                return (
+                  <div key={prod.id} onClick={() => abrirModalProducto(prod)}
+                    className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-row gap-3 relative overflow-hidden group hover:shadow-md transition-all h-[120px] cursor-pointer active:scale-[0.98]">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-600 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity z-10"></div>
+
+                    {/* Badge de descuento */}
+                    {descuento.badge && (
+                      <div className="absolute top-2 right-2 z-10 bg-green-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm">
+                        {descuento.badge}
                       </div>
                     )}
-                  </div>
-                  <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
-                    <div>
-                      <h3 className="font-bold text-sm text-gray-900 leading-tight truncate pr-1">{prod.nombre}</h3>
-                      <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
-                        {prod.descripcion || <span className="italic opacity-50">Sin descripción</span>}
-                      </p>
+
+                    <div className="relative w-[100px] h-full flex-shrink-0 bg-gray-50 rounded-xl overflow-hidden">
+                      {prod.imagen ? (
+                        <Image src={prod.imagen} alt={prod.nombre} fill className="object-cover" sizes="(max-width: 768px) 100px, 150px" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-end justify-between mt-1">
-                      <span className="text-lg font-black text-red-600">${prod.precio}</span>
-                      <div className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase">Tocar para agregar</div>
+
+                    <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
+                      <div>
+                        <h3 className="font-bold text-sm text-gray-900 leading-tight truncate pr-8">{prod.nombre}</h3>
+                        <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
+                          {prod.descripcion || <span className="italic opacity-50">Sin descripción</span>}
+                        </p>
+                      </div>
+                      <div className="flex items-end justify-between mt-1">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className={`text-lg font-black ${descuento.precioOriginal ? "text-green-600" : "text-red-600"}`}>
+                            ${descuento.precioEfectivo.toLocaleString()}
+                          </span>
+                          {descuento.precioOriginal && (
+                            <span className="text-xs text-gray-400 line-through font-medium">
+                              ${descuento.precioOriginal.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase">Agregar</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         ))}
       </main>
+
+      {/* ── BOTÓN FLOTANTE LLAMAR AL MOZO ──────────────────────────────────── */}
+      <div className="fixed bottom-0 left-4 z-30 pb-4 flex items-end">
+        <button
+          onClick={() => { if (!llamadoActivo) setVerLlamadoSheet(true); }}
+          disabled={!!llamadoActivo}
+          className={`flex items-center gap-2 px-4 py-3 rounded-2xl shadow-lg font-bold text-sm transition-all active:scale-95
+            ${llamadoActivo
+              ? "bg-amber-100 text-amber-700 border border-amber-300 cursor-not-allowed"
+              : "bg-white text-slate-800 border border-slate-200 hover:border-slate-300 hover:shadow-xl"
+            }`}
+        >
+          <BellRing size={17} className={llamadoActivo ? "text-amber-500" : "text-slate-600"} />
+          {llamadoActivo ? "En camino…" : "Llamar al mozo"}
+        </button>
+      </div>
 
       {/* ── FOOTER FLOTANTE (CARRITO) ──────────────────────────────────────── */}
       {totalItems > 0 && (
@@ -311,7 +422,26 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
             </div>
             <div className="p-6 overflow-y-auto flex-1">
               <h2 className="text-2xl font-black text-gray-900 mb-2">{modalProducto.nombre}</h2>
-              <p className="text-3xl font-black text-red-600 mb-4">${modalProducto.precio}</p>
+              {(() => {
+                const d = descuentoParaProducto(modalProducto.id, modalProducto.categoriaId, modalProducto.precio, reglas);
+                return (
+                  <div className="flex items-center gap-2 flex-wrap mb-4">
+                    <p className={`text-3xl font-black ${d.precioOriginal ? "text-green-600" : "text-red-600"}`}>
+                      ${d.precioEfectivo.toLocaleString()}
+                    </p>
+                    {d.precioOriginal && (
+                      <p className="text-xl text-gray-400 line-through font-medium">
+                        ${d.precioOriginal.toLocaleString()}
+                      </p>
+                    )}
+                    {d.badge && (
+                      <span className="bg-green-500 text-white text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wide shadow-sm">
+                        {d.badge}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               {modalProducto.descripcion && <p className="text-gray-600 text-sm mb-6 leading-relaxed">{modalProducto.descripcion}</p>}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Cantidad</label>
@@ -335,10 +465,16 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-              <button onClick={agregarAlCarrito}
-                className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 flex items-center justify-center gap-2 text-lg">
-                <Plus size={20} /> AGREGAR AL CARRITO
-              </button>
+              {(() => {
+                const d = descuentoParaProducto(modalProducto.id, modalProducto.categoriaId, modalProducto.precio, reglas);
+                const subtotal = d.precioEfectivo * cantidadModal;
+                return (
+                  <button onClick={agregarAlCarrito}
+                    className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300 flex items-center justify-center gap-2 text-lg">
+                    <Plus size={20} /> AGREGAR · ${subtotal.toLocaleString()}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -401,6 +537,39 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               </div>
               <button onClick={() => setVerCarrito(false)}
                 className="w-full bg-gradient-to-br from-red-600 to-red-700 text-white font-bold px-6 py-4 rounded-xl shadow-lg shadow-red-200 active:scale-95 transition-all hover:shadow-xl hover:shadow-red-300">CONTINUAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BOTTOM SHEET LLAMAR AL MOZO ────────────────────────────────────── */}
+      {verLlamadoSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => e.target === e.currentTarget && setVerLlamadoSheet(false)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8">
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+            <div className="px-5 pb-2 pt-2 flex items-center justify-between">
+              <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+                <BellRing size={20} className="text-red-600" /> ¿Qué necesitás?
+              </h3>
+              <button onClick={() => setVerLlamadoSheet(false)}
+                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors">
+                <X size={18} className="text-slate-600" />
+              </button>
+            </div>
+            <div className="px-5 pb-8 pt-2 grid grid-cols-1 gap-2">
+              {MOTIVOS.map(({ valor, label, icono: Icono }) => (
+                <button key={valor} onClick={() => llamarMozo(valor)} disabled={enviandoLlamado}
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:scale-95 transition-all text-left font-bold text-sm text-slate-800 disabled:opacity-50">
+                  <div className="bg-red-50 p-2 rounded-xl flex-shrink-0">
+                    <Icono size={18} className="text-red-600" />
+                  </div>
+                  {label}
+                  {enviandoLlamado && <Loader2 size={14} className="ml-auto animate-spin text-slate-400" />}
+                </button>
+              ))}
             </div>
           </div>
         </div>

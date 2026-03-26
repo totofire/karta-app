@@ -7,6 +7,7 @@ import MenuInterface from "./MenuInterface";
 import ClienteListener from "@/components/ClienteListener";
 import ServicioListener from "@/components/ServicioListener";
 import { Store, ScanLine, UtensilsCrossed } from "lucide-react";
+import { obtenerReglasActivas } from "@/lib/descuentos";
 
 export const dynamic = "force-dynamic";
 
@@ -88,11 +89,11 @@ export default async function Page({
   if (sesionActiva && !sesionActiva.fechaFin) {
     // Verificar si el servicio está cerrado (mozos siempre pueden acceder)
     if (!esMozo) {
-      const config = await prisma.configuracion.findUnique({
-        where: { localId: sesionActiva.localId },
-        select: { cajaAbierta: true },
+      const turnoActivo = await prisma.turno.findFirst({
+        where: { localId: sesionActiva.localId, fechaCierre: null },
+        select: { id: true },
       });
-      if (config && !config.cajaAbierta) {
+      if (!turnoActivo) {
         return (
           <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
             <ServicioListener localId={sesionActiva.localId} />
@@ -128,7 +129,7 @@ export default async function Page({
       productoWhere.OR = [{ stockActual: null }, { stockActual: { gt: 0 } }];
     }
 
-    const [categorias, pedidos] = await Promise.all([
+    const [categorias, pedidos, reglasActivas] = await Promise.all([
       prisma.categoria.findMany({
         where: { localId: sesionActiva.localId },
         include: {
@@ -144,6 +145,7 @@ export default async function Page({
         include: { items: { include: { producto: true } } },
         orderBy: { fecha: "desc" },
       }),
+      obtenerReglasActivas(sesionActiva.localId),
     ]);
 
     return (
@@ -157,6 +159,7 @@ export default async function Page({
           esMozo={esMozo}
           fromMozo={fromMozo}
           pagoEstado={sp?.pago ?? null}
+          reglasActivas={reglasActivas}
         />
       </>
     );
@@ -187,11 +190,11 @@ export default async function Page({
 
   // ── 3. Verificar si el servicio está cerrado antes de crear sesión ────────
   if (!esMozo) {
-    const config = await prisma.configuracion.findUnique({
-      where: { localId: mesa.localId },
-      select: { cajaAbierta: true },
+    const turnoActivo = await prisma.turno.findFirst({
+      where: { localId: mesa.localId, fechaCierre: null },
+      select: { id: true },
     });
-    if (config && !config.cajaAbierta) {
+    if (!turnoActivo) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">
           <ServicioListener localId={mesa.localId} />

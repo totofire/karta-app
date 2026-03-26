@@ -10,10 +10,10 @@ export async function GET() {
 
   const config = await prisma.configuracion.findUnique({
     where: { localId },
-    select: { cajaAbierta: true, usaStock: true, horaApertura: true, horaCierre: true, alertaKdsMinutos: true },
+    select: { usaStock: true, horaApertura: true, horaCierre: true, alertaKdsMinutos: true },
   });
 
-  return NextResponse.json(config ?? { cajaAbierta: true, usaStock: false, alertaKdsMinutos: 15 });
+  return NextResponse.json(config ?? { usaStock: false, alertaKdsMinutos: 15 });
 }
 
 export async function PATCH(request: Request) {
@@ -24,7 +24,6 @@ export async function PATCH(request: Request) {
   const data: Record<string, unknown> = {};
 
   if (typeof body.usaStock === "boolean") data.usaStock = body.usaStock;
-  if (typeof body.cajaAbierta === "boolean") data.cajaAbierta = body.cajaAbierta;
   if (typeof body.horaApertura === "string") data.horaApertura = body.horaApertura;
   if (typeof body.horaCierre === "string") data.horaCierre = body.horaCierre;
   if (typeof body.alertaKdsMinutos === "number" && body.alertaKdsMinutos >= 1) data.alertaKdsMinutos = body.alertaKdsMinutos;

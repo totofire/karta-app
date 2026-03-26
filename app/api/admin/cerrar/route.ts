@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
+import { obtenerReglasActivas, calcularDescuentoSesion } from "@/lib/descuentos";
 
 export async function POST(req: Request) {
   const localId = await getLocalId();
@@ -21,28 +22,30 @@ export async function POST(req: Request) {
           id: sesionId,
           localId: localId 
         },
-        include: { 
-          pedidos: { 
-            include: { items: true } 
-          } 
+        include: {
+          pedidos: {
+            include: { items: { select: { precio: true, cantidad: true, descuentoAplicado: true, estado: true } } },
+          },
         }
       });
 
       if (!sesion) throw new Error("Sesión no encontrada o no pertenece al local");
 
-      // 2. Calcular el total (Ignorando cancelados)
-      let totalFinal = 0;
-      
+      // 2. Calcular el total (ignorando cancelados, considerando descuentos por ítem)
+      let totalBruto = 0;
+
       sesion.pedidos.forEach((pedido) => {
-        // Solo sumamos si el pedido NO está cancelado
         if (pedido.estado !== "CANCELADO") {
-          pedido.items.forEach((item) => {
-             // Opcional: Si tus items individuales pueden cancelarse, agrega check aquí
-             // if (item.estado !== "CANCELADO") ...
-             totalFinal += item.precio * item.cantidad;
+          pedido.items.forEach((item: any) => {
+            totalBruto += item.precio * item.cantidad - (item.descuentoAplicado ?? 0);
           });
         }
       });
+
+      // Aplicar descuentos globales de sesión (PORCENTAJE global, DESCUENTO_GLOBAL)
+      const reglasActivas = await obtenerReglasActivas(localId);
+      const descuentoSesion = calcularDescuentoSesion(totalBruto, reglasActivas);
+      const totalFinal = Math.max(0, totalBruto - descuentoSesion);
 
       // 3. LIMPIEZA DE "ZOMBIS" (Cocina/Barra)
       // Pasamos a ENTREGADO todo lo que haya quedado colgado (PENDIENTE/PREPARACION)
@@ -70,10 +73,11 @@ export async function POST(req: Request) {
       const sesionCerrada = await tx.sesion.update({
         where: { id: sesionId },
         data: {
-          fechaFin: new Date(),        // Marca de tiempo final
-          totalVenta: totalFinal,      // Guardamos cuánto se facturó
-          solicitaCuenta: null,        // Apagamos la alerta de "Pide Cuenta"
-        }
+          fechaFin: new Date(),
+          totalVenta: totalFinal,
+          descuentoTotal: descuentoSesion,
+          solicitaCuenta: null,
+        },
       });
       
       // Liberamos la mesa asociada para que pueda usarse de nuevo

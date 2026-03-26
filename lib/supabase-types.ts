@@ -21,4 +21,5 @@ export interface SesionPayload {
   expiraEn?: string | null;
   solicitaCuenta?: string | null;
   metodoPago?: string | null;
+  llamadaMozo?: string | null;
 }
