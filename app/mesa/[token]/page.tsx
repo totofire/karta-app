@@ -15,7 +15,7 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams?: Promise<{ pago?: string }>;
+  searchParams?: Promise<{ pago?: string; from?: string }>;
 }) {
   const { token } = await params;
   const sp = searchParams ? await searchParams : {};
