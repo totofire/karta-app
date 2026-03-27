@@ -1,4 +1,21 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # CLAUDE.md — Karta SaaS Platform
+
+## Comandos
+
+```bash
+npm run dev          # Servidor de desarrollo (Next.js 15)
+npm run build        # prisma migrate deploy + next build
+npm run lint         # ESLint
+
+npx prisma migrate dev --name <nombre>   # Crear y aplicar nueva migración local
+npx prisma migrate deploy                # Aplicar migraciones pendientes (prod)
+npx prisma studio                        # GUI para explorar la base de datos
+npx prisma generate                      # Regenerar Prisma Client tras cambios de schema
+```
 
 ## Rol
 
@@ -104,6 +121,7 @@ export default function MesasListener({ localId, onUpdate }: { localId: number; 
 - `KDSListener` → Cocina/Barra: detecta cancelaciones totales/parciales en tabla `Pedido`
 - `ClienteListener` → Cliente: escucha cambios de estado en sus pedidos (CANCELADO, ENTREGADO)
 - `MesasListener` → Mozo: escucha cambios en `Mesa` y `Sesion`
+- `MozoListener` → Mozo: escucha `llamadaMozo` en tabla `sesion` para alertas de llamadas al mozo
 - `ServicioListener` → Cliente: escucha cambios en `Configuracion` (cajaAbierta)
 - Layout Admin (`app/admin/layout.tsx`) → canal `admin-pedidos-{localId}` + `admin-sesiones-{localId}`
 
@@ -124,6 +142,11 @@ export default function MesasListener({ localId, onUpdate }: { localId: number; 
 | Categoría | `categoria` | `Categoria` |
 | Sector/Zona | `sector` | `Sector` + campo `sector` en `Mesa` |
 | Configuración | `configuracion` | `Configuracion` |
+| Llamada al mozo | `llamadaMozo` | `String?` en `Sesion` ("SERVILLETAS" \| "ADEREZOS" \| "CUBIERTOS" \| "CONSULTA" \| "OTRO") |
+| Turno de caja | `turno` | `Turno` |
+| Retiro de caja | `retiro` | `Retiro` |
+| Reserva | `reserva` | `Reserva` |
+| Regla de descuento | `reglaDescuento` | `ReglaDescuento` |
 
 Todo el codebase usa nombres en español. Mantener consistencia absoluta.
 
@@ -222,13 +245,25 @@ Modes: `ventas_periodo`, `top_productos`, `ticket_sesiones`, `rendimiento_mesas`
 
 ```
 Local (1) ──→ (N) Usuario, Mesa, Sector, Categoria, Producto, Sesion, Pedido, Configuracion(1:1)
-Mesa (1) ──→ (N) Sesion
-Sesion (1) ──→ (N) Pedido     [tokenEfimero unique, solicitaCuenta, metodoPago]
+Local (1) ──→ (N) ReglaDescuento, Reserva, Turno
+Mesa (1) ──→ (N) Sesion, Reserva
+Sesion (1) ──→ (N) Pedido     [tokenEfimero unique, solicitaCuenta, metodoPago, llamadaMozo]
 Pedido (1) ──→ (N) ItemPedido [estado, impreso, fechaDespacho]
 Categoria (1) ──→ (N) Producto [imprimirCocina determina cocina vs barra]
+Turno (1) ──→ (N) Retiro      [fechaApertura, fechaCierre, efectivoInicial, efectivoFinal]
 ```
 
 Campos clave no obvios: `Configuracion.mapaZonas` (Json — layout editor de salón), `Mesa.numero` (correlativo auto), `Mesa.posX/posY` (mapa), `Local.mpAccessToken` (Mercado Pago OAuth).
+
+## Módulos Adicionales
+
+**Caja (`/admin/caja`):** Gestión de turnos de caja. Un turno activo = caja abierta (`Turno` sin `fechaCierre`). Flujo: abrir turno (`POST /api/admin/caja/abrir`) → registrar retiros (`POST /api/admin/caja/retiro`) → cerrar (`POST /api/admin/caja/cerrar`). Estado actual via `GET /api/admin/caja`.
+
+**Reservas (`/admin/reservas`):** CRUD de reservas (`Reserva`). Estados: `PENDIENTE` | `CONFIRMADA` | `CANCELADA` | `COMPLETADA`. API en `/api/admin/reservas` y `/api/admin/reservas/[id]`.
+
+**Descuentos (`/admin/descuentos`):** Reglas de descuento configurables (`ReglaDescuento`). Tipos: `PORCENTAJE` | `2X1` | `PRECIO_ESPECIAL` | `DESCUENTO_GLOBAL`. Scope opcional por categoría o producto. Condiciones temporales por `diasSemana`/`horaDesde`/`horaHasta`. Lógica de aplicación en `lib/descuentos.ts` y `lib/descuentos-utils.ts`.
+
+**Llamar al mozo:** Cliente llama al mozo desde `MenuInterface` → `POST /api/pedidos/llamar` setea `llamadaMozo` en Sesion → `MozoListener` en `/mozo` detecta el cambio via Realtime → alerta visual/sonora al mozo.
 
 ## Variables de Entorno
 
