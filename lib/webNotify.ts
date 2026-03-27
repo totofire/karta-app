@@ -46,19 +46,22 @@ export function notificarNativo(
     renotify: true,
   } as NotificationOptions & { renotify: boolean };
 
-  // Intentar vía Service Worker (funciona en background)
-  if ("serviceWorker" in navigator) {
+  // Intentar vía Service Worker (funciona en background).
+  // navigator.serviceWorker.ready NUNCA resuelve si no hay SW activo para
+  // el scope actual, y NUNCA rechaza → deadlock silencioso.
+  // Usamos Promise.race con timeout de 800ms para caer al fallback directo.
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.ready
       .then((reg) => {
         reg.showNotification(titulo, opciones);
       })
       .catch(() => {
-        // SW no listo todavía → fallback
         _notificarDirecto(titulo, opciones);
       });
     return;
   }
 
+  // Sin SW controlando esta página → fallback inmediato
   _notificarDirecto(titulo, opciones);
 }
 

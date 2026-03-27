@@ -6,9 +6,8 @@ export default function RegistrarSW() {
     if (!("serviceWorker" in navigator)) return;
 
     navigator.serviceWorker
-      .register("/sw.js", { scope: "/mozo" })
+      .register("/sw.js", { scope: "/" })
       .then((reg) => {
-        // Verificar actualizaciones cada vez que el mozo abre la app
         reg.update();
       })
       .catch(() => {

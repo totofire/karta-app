@@ -58,9 +58,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const mutateCocinaRef     = useRef(mutateCocina);
   const mutateBarraRef      = useRef(mutateBarra);
   const mesasRef            = useRef<any[]>([]);
-  const prevMesasRef        = useRef<any[]>([]);
   const cuentasNotificadasRef = useRef<Set<number>>(new Set());
-  const inicializado        = useRef(false);
+  const pedidosNotificadosRef = useRef<Set<number>>(new Set());
 
   useEffect(() => { mutateRef.current       = mutateMesas;  }, [mutateMesas]);
   useEffect(() => { mutateCocinaRef.current = mutateCocina; }, [mutateCocina]);
@@ -78,57 +77,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => window.removeEventListener("online", refresh);
   }, []);
 
-  // ── DIFF: actualiza UI en base a cambios de SWR ───────────────────────────
-  // Se usa SOLO para los toasts in-app (notify.*) cuando la pestaña está activa.
-  // Las notificaciones nativas del OS se disparan desde el WebSocket (abajo),
-  // así llegan aunque Chrome throttlee los fetch en background.
-  // ── DIFF: audio + toasts in-app (requieren contexto React) ───────────────
-useEffect(() => {
-  if (!Array.isArray(mesas) || mesas.length === 0) return;
-
-  if (!inicializado.current) {
-    prevMesasRef.current = mesas;
-    inicializado.current = true;
-    return;
-  }
-
-  const prev = prevMesasRef.current;
-
-  mesas.forEach((mesa: any) => {
-    const anterior = prev.find((m: any) => m.id === mesa.id);
-
-    if (!anterior && mesa.totalActual > 0) {
-      audioManager.play("ding");          // ← audio aquí, funciona
-      navigator.vibrate?.([200, 100, 200]);
-      notify.pedido("¡Nuevo pedido!", mesa.nombre);
-      return;
-    }
-    if (!anterior) return;
-
-    if (mesa.totalActual > anterior.totalActual) {
-      audioManager.play("ding");          // ← audio aquí, funciona
-      navigator.vibrate?.([200, 100, 200]);
-      notify.pedido("¡Nuevo pedido!", mesa.nombre);
-    }
-
-    if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
-      if (!cuentasNotificadasRef.current.has(mesa.id)) {
-        cuentasNotificadasRef.current.add(mesa.id);
-        setTimeout(() => cuentasNotificadasRef.current.delete(mesa.id), 10_000);
-        audioManager.play("caja");        // ← audio aquí, funciona
-        navigator.vibrate?.([300, 100, 300]);
-        notify.atencion("¡Piden la cuenta!", mesa.nombre);
-      }
-    }
-  });
-
-  prevMesasRef.current = mesas;
-}, [mesas]);
-
   // ── CANALES SUPABASE (1 canal por tabla) ──────────────────────────────────
-  // El WebSocket NO es throttleado por Chrome en pestañas de fondo.
-  // Por eso las notificaciones nativas del OS se disparan aquí directamente,
-  // sin esperar el fetch de SWR (que sí puede demorarse en background).
+  // TODAS las notificaciones (audio + toast + OS) se disparan DIRECTAMENTE
+  // desde los callbacks WebSocket. Esto funciona tanto en foreground como en
+  // background porque Chrome NO throttlea WebSockets (sí throttlea fetch/SWR).
+  // Audio se encola automáticamente si el tab está oculto (AudioManager).
 
   useEffect(() => {
     if (!localId) return;
@@ -143,12 +96,17 @@ useEffect(() => {
         (payload) => {
           const eventType = payload.eventType;
           const newRecord = payload.new as PedidoPayload;
-          const oldRecord = payload.old as PedidoPayload;
 
-          console.log(`📥 [admin-pedidos] ${eventType} Pedido:`, { old: oldRecord, new: newRecord });
+          if (eventType === "INSERT" && newRecord.id) {
+            if (!pedidosNotificadosRef.current.has(newRecord.id)) {
+              pedidosNotificadosRef.current.add(newRecord.id);
+              setTimeout(() => pedidosNotificadosRef.current.delete(newRecord.id!), 10_000);
 
-          if (eventType === "INSERT") {
-            notificarNativo("🍽️ Nuevo pedido", "Hay un nuevo pedido esperando", "pedido-nuevo");
+              audioManager.play("ding");
+              navigator.vibrate?.([200, 100, 200]);
+              notify.pedido("¡Nuevo pedido!", newRecord.nombreCliente ?? "");
+              notificarNativo("¡Nuevo pedido!", newRecord.nombreCliente ?? "Hay un nuevo pedido esperando", `pedido-${newRecord.id}`);
+            }
           }
 
           mutateRef.current();
@@ -181,24 +139,30 @@ useEffect(() => {
           const newRecord = payload.new as SesionPayload;
           const oldRecord = payload.old as SesionPayload;
 
-          console.log(`📥 [admin-sesiones] ${eventType} Sesion:`, { old: oldRecord, new: newRecord });
-
           if (eventType !== "UPDATE") {
             mutateRef.current();
             return;
           }
 
+          // Detectar solicitud de cuenta
           const pideCuenta = !oldRecord.solicitaCuenta && !!newRecord.solicitaCuenta;
           if (pideCuenta) {
             const mesaId = newRecord.mesaId;
             if (mesaId !== undefined) {
-              if (cuentasNotificadasRef.current.has(mesaId)) return;
+              if (cuentasNotificadasRef.current.has(mesaId)) {
+                mutateRef.current();
+                return;
+              }
               cuentasNotificadasRef.current.add(mesaId);
-              setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15000);
+              setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15_000);
             }
             const mesaNombre =
               mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? (mesaId !== undefined ? `#${mesaId}` : "desconocida");
-            notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, mesaId !== undefined ? `cuenta-${mesaId}` : "cuenta");
+
+            audioManager.play("caja");
+            navigator.vibrate?.([300, 100, 300]);
+            notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
+            notificarNativo("¡Piden la cuenta!", `Mesa ${mesaNombre}`, mesaId !== undefined ? `cuenta-${mesaId}` : "cuenta");
           }
 
           mutateRef.current();

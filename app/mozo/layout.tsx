@@ -1,7 +1,6 @@
 // app/mozo/layout.tsx
 import type { Metadata, Viewport } from "next";
 import InstalarPWA from "@/components/InstalarPWA";
-import RegistrarSW from "@/components/RegistrarSW";
 
 export const metadata: Metadata = {
   title: "Karta — Mozo",
@@ -28,7 +27,6 @@ export const viewport: Viewport = {
 export default function MozoLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <RegistrarSW />
       {children}
       <InstalarPWA />
     </>
