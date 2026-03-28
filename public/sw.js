@@ -1,7 +1,7 @@
 // Karta PWA — Service Worker
 // Estrategia: Network First para API, Cache First para assets estáticos
 
-const CACHE_VERSION = "karta-v3";
+const CACHE_VERSION = "karta-mozo-v2";
 const OFFLINE_URL = "/offline";
 
 const PRECACHE_URLS = [
@@ -43,16 +43,6 @@ self.addEventListener("fetch", (event) => {
   // Solo interceptar mismo origen
   if (url.origin !== location.origin) return;
 
-  // NO interceptar APIs de admin/cocina/barra — siempre network directo
-  if (
-    url.pathname.startsWith("/api/admin/") ||
-    url.pathname.startsWith("/api/cocina") ||
-    url.pathname.startsWith("/api/barra") ||
-    url.pathname.startsWith("/api/auth/")
-  ) {
-    return;
-  }
-
   // API Mozo → Network First (5s timeout, fallback a cache)
   if (url.pathname.startsWith("/api/mozo/")) {
     event.respondWith(networkFirst(request, 5000));
@@ -86,7 +76,7 @@ self.addEventListener("fetch", (event) => {
 // para mostrar una notificación nativa aunque la pestaña esté en background.
 self.addEventListener("message", (event) => {
   if (!event.data || event.data.type !== "NOTIFY") return;
-  const { title, body, tag, url } = event.data;
+  const { title, body, tag } = event.data;
   if (!title) return;
   self.registration.showNotification(title, {
     body: body ?? "",
@@ -94,25 +84,21 @@ self.addEventListener("message", (event) => {
     badge: "/icons/web-app-manifest-192x192.png",
     tag: tag ?? title,
     renotify: true,
-    data: { url: url ?? "/admin" },
+    data: { url: "/mozo" },
   });
 });
 
 // ── Click en notificación del SW ───────────────────────────────────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url ?? "/admin";
+  const url = event.notification.data?.url ?? "/mozo";
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
-        // Buscar una ventana que coincida con la ruta destino
-        const match = clients.find((c) => c.url.includes(targetUrl));
-        if (match) return match.focus();
-        // Fallback: cualquier ventana abierta de la app
-        const any = clients.find((c) => c.url.includes(location.origin));
-        if (any) return any.focus();
-        return self.clients.openWindow(targetUrl);
+        const mozoClient = clients.find((c) => c.url.includes("/mozo"));
+        if (mozoClient) return mozoClient.focus();
+        return self.clients.openWindow(url);
       })
   );
 });

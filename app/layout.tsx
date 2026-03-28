@@ -2,7 +2,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "react-hot-toast";
-import RegistrarSW from "@/components/RegistrarSW";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -24,7 +23,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body className="antialiased bg-gray-50 text-gray-900">
-        <RegistrarSW />
         {children}
         <Toaster 
           position="top-center" 
