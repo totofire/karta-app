@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Store, CheckCircle2, AlertCircle, Ban, XCircle,
+  ArrowLeft, Store, CheckCircle2, AlertCircle, XCircle,
   Clock, CreditCard, Users, Receipt, RefreshCcw, Loader2,
   TrendingUp, Wifi, WifiOff,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
+import type { ValueType, NameType, Payload } from "recharts/types/component/DefaultTooltipContent";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface LocalDetalle {
@@ -134,7 +135,7 @@ function SaludIndicador({ sesiones7d, estado }: { sesiones7d: number; estado: st
   return <span className="text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-3 py-1">Sin actividad</span>;
 }
 
-function TooltipVentas({ active, payload, label }: { active?: boolean; payload?: { value: unknown }[]; label?: string }) {
+function TooltipVentas({ active, payload, label }: { active?: boolean; payload?: Payload<ValueType, NameType>[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs">
@@ -155,7 +156,7 @@ export default function DetalleLocalPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
@@ -171,9 +172,9 @@ export default function DetalleLocalPage() {
     } finally {
       setCargando(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { fetchData(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   if (cargando) {
     return (
@@ -209,6 +210,7 @@ export default function DetalleLocalPage() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => router.push("/superadmin/dashboard")}
+              aria-label="Volver al dashboard"
               className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-gray-800 transition">
               <ArrowLeft size={18} />
             </button>
@@ -222,6 +224,7 @@ export default function DetalleLocalPage() {
             <Chip cls={estadoBadge.cls}>{estadoBadge.icon}{estadoBadge.label}</Chip>
             <Chip cls={`${planBadge.cls} border-transparent`}>{planBadge.label}</Chip>
             <button onClick={fetchData}
+              aria-label="Actualizar"
               className="p-2 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition">
               <RefreshCcw size={15} />
             </button>
@@ -321,7 +324,7 @@ export default function DetalleLocalPage() {
             {data.fechaVence && (
               <InfoRow label="Vence" value={
                 <span className={diasVence !== null && diasVence < 0 ? "text-red-400 font-semibold" : "text-gray-300"}>
-                  {fechaCorta(data.fechaVence)}{diasVence !== null && diasVence < 0 && " ⚠️ vencido"}
+                  {fechaCorta(data.fechaVence)}{diasVence !== null && diasVence < 0 && <span className="text-red-400 font-semibold"> vencido</span>}
                 </span>
               } />
             )}
