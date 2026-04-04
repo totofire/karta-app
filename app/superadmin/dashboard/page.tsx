@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus, Store, TrendingUp, Clock, ShieldAlert,
   Loader2, AlertCircle, CheckCircle2, X,
@@ -8,11 +9,19 @@ import {
   Building2, Users, BadgeCheck,
   Pencil, Trash2, RefreshCcw, Ban, Power,
   Eye, DollarSign, Receipt, MessageCircle, Copy,
-  LogOut
+  LogOut, CreditCard, Mail
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
+interface Alerta {
+  tipo: "TRIAL_POR_VENCER" | "PAGO_VENCIDO" | "INACTIVO" | "INVITE_VENCIDO";
+  severidad: "alta" | "media";
+  localId: number;
+  localNombre: string;
+  detalle: string;
+}
+
 interface LocalRow {
   id:         number;
   nombre:     string;
@@ -690,13 +699,79 @@ function KpiCard({ icon, label, value, sub, bg }: {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// PANEL DE ALERTAS
+// ════════════════════════════════════════════════════════════════════════════════
+const ALERTA_CONFIG: Record<string, { label: string; icon: React.ReactNode; cls: string; dot: string }> = {
+  PAGO_VENCIDO:     { label: "Pago vencido",     icon: <CreditCard size={13} />, cls: "text-red-400 bg-red-500/10 border-red-500/20",     dot: "bg-red-400"    },
+  TRIAL_POR_VENCER: { label: "Trial por vencer", icon: <Clock size={13} />,      cls: "text-amber-400 bg-amber-500/10 border-amber-500/20", dot: "bg-amber-400"  },
+  INACTIVO:         { label: "Sin actividad",    icon: <AlertCircle size={13} />, cls: "text-amber-400 bg-amber-500/10 border-amber-500/20", dot: "bg-amber-400"  },
+  INVITE_VENCIDO:   { label: "Invite vencido",   icon: <Mail size={13} />,        cls: "text-blue-400 bg-blue-500/10 border-blue-500/20",    dot: "bg-blue-400"   },
+};
+
+function AlertasPanel({ alertas, onVerLocal }: { alertas: Alerta[]; onVerLocal: (id: number) => void }) {
+  const [expandido, setExpandido] = useState(true);
+  if (alertas.length === 0) return null;
+  const altas = alertas.filter((a) => a.severidad === "alta");
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      <button
+        onClick={() => setExpandido(!expandido)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-800/50 transition"
+      >
+        <div className="flex items-center gap-2.5">
+          <AlertCircle size={16} className={altas.length > 0 ? "text-red-400" : "text-amber-400"} />
+          <span className="text-white font-semibold text-sm">Alertas activas</span>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${altas.length > 0 ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"}`}>
+            {alertas.length}
+          </span>
+          {altas.length > 0 && (
+            <span className="text-xs text-red-400">{altas.length} urgente{altas.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+        <ChevronDown size={16} className={`text-gray-500 transition-transform ${expandido ? "rotate-180" : ""}`} />
+      </button>
+      {expandido && (
+        <div className="border-t border-gray-800 divide-y divide-gray-800">
+          {alertas.map((alerta, i) => {
+            const cfg = ALERTA_CONFIG[alerta.tipo];
+            return (
+              <div key={i} className="flex items-center justify-between px-5 py-3 hover:bg-gray-800/30 transition">
+                <div className="flex items-center gap-3">
+                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                  <div>
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border mr-2 ${cfg.cls}`}>
+                      {cfg.icon}{cfg.label}
+                    </span>
+                    <span className="text-white text-sm font-medium">{alerta.localNombre}</span>
+                    <span className="text-gray-500 text-xs ml-2">— {alerta.detalle}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => onVerLocal(alerta.localId)}
+                  className="text-xs text-gray-500 hover:text-white transition px-2 py-1 rounded-lg hover:bg-gray-700 flex-shrink-0"
+                >
+                  Ver local →
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // DASHBOARD PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════════
 export default function SuperAdminPage() {
+  const router = useRouter();
+
   const [data, setData]                     = useState<{ locales: LocalRow[] } | null>(null);
   const [cargando, setCargando]             = useState(true);
   const [busqueda, setBusqueda]             = useState("");
   const [filtroEstado, setFiltroEstado]     = useState("TODOS");
+  const [alertas, setAlertas]               = useState<Alerta[]>([]);
 
   const [modalNuevo, setModalNuevo]         = useState(false);
   const [modalEditar, setModalEditar]       = useState<LocalRow | null>(null);
@@ -717,7 +792,16 @@ export default function SuperAdminPage() {
     setCargando(false);
   }, []);
 
+  const fetchAlertas = useCallback(async () => {
+    try {
+      const res = await fetch("/api/superadmin/alertas");
+      const d   = await res.json();
+      if (res.ok) setAlertas(d.alertas ?? []);
+    } catch {}
+  }, []);
+
   useEffect(() => { fetchLocales(); }, [fetchLocales]);
+  useEffect(() => { fetchAlertas(); }, [fetchAlertas]);
 
   function updateLocal(id: number, patch: Partial<LocalRow>) {
     setData((prev) => prev
@@ -807,7 +891,7 @@ export default function SuperAdminPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={fetchLocales}
+            <button onClick={() => { fetchLocales(); fetchAlertas(); }}
               className="p-2 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition" title="Recargar">
               <RefreshCcw size={16} />
             </button>
@@ -846,6 +930,9 @@ export default function SuperAdminPage() {
             label="Suspendidos" value={totalSuspendidos}
             bg="bg-red-500/5 border-red-500/10" />
         </div>
+
+        {/* Alertas */}
+        <AlertasPanel alertas={alertas} onVerLocal={(id) => router.push(`/superadmin/locales/${id}`)} />
 
         {/* Tabla */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
