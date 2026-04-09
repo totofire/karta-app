@@ -89,12 +89,7 @@ export default function PanelMozo() {
   const mutateRef = useRef(mutate);
   useEffect(() => { mutateRef.current = mutate; }, [mutate]);
 
-  // ── Reconexión al volver online ─────────────────────────────────────────
-  useEffect(() => {
-    const refresh = () => mutateRef.current();
-    window.addEventListener("online", refresh);
-    return () => window.removeEventListener("online", refresh);
-  }, []);
+  // Reconexión al volver online → manejado por useRealtimeReconnect en MozoListener
 
   // ── Estado UI ───────────────────────────────────────────
   const [abriendo, setAbriendo]         = useState<number | null>(null);

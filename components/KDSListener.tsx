@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import toast from 'react-hot-toast';
 import { Ban, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useRealtimeReconnect } from '@/hooks/useRealtimeReconnect';
 
 interface KDSListenerProps {
   sector: 'cocina' | 'barra';
@@ -29,16 +30,26 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
   const { data: me } = useSWR('/api/auth/me', fetcherMe, { revalidateOnFocus: false });
   const localId: number | null = me?.localId ?? null;
 
+  const [retryCount, setRetryCount] = useState(0);
+
   // Refs estables para no recrear el canal cuando cambian las funciones
   const mutateRef       = useRef(mutate);
   const canceladosRef   = useRef(canceladosPorAdmin);
   useEffect(() => { mutateRef.current     = mutate;            }, [mutate]);
   useEffect(() => { canceladosRef.current = canceladosPorAdmin; }, [canceladosPorAdmin]);
 
+  useRealtimeReconnect({
+    mutators: [mutate],
+  });
+
   useEffect(() => {
     if (!localId) return;
+    if (retryCount > 5) {
+      console.error(`[RT] kds-${sector}: máximo de reintentos alcanzado`);
+      return;
+    }
 
-    console.log(`🔌 [KDSListener] Conectando canal kds-${sector}-${localId}...`);
+    console.log(`[RT] Conectando kds-${sector}-${localId} (retry ${retryCount})...`);
 
     const canal = supabase
       .channel(`kds-${sector}-${localId}`)
@@ -113,15 +124,24 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
           mutateRef.current();
         },
       )
-      .subscribe((status) => {
-        console.log(`📡 [KDSListener] ${sector} — Estado: ${status}`);
+      .subscribe((status, err) => {
+        console.log(`[RT] kds-${sector} status: ${status}`, err || "");
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ kds-${sector} activo — ${new Date().toISOString()}`);
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[RT] ❌ kds-${sector} ${status}:`, err);
+          setTimeout(() => {
+            supabase.removeChannel(canal);
+            setRetryCount((prev) => prev + 1);
+          }, 2000 * Math.min(retryCount + 1, 5));
+        }
       });
 
     return () => {
-      console.log(`🔌 [KDSListener] Desconectando canal kds-${sector}-${localId}`);
       supabase.removeChannel(canal);
     };
-  }, [localId, sector]);
+  }, [localId, sector, retryCount]);
 
   return null;
 }

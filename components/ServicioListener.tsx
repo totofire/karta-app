@@ -23,7 +23,17 @@ export default function ServicioListener({ localId }: { localId: number }) {
           routerRef.current.refresh();
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ servicio-${localId} activo`);
+        }
+        if (status === "CHANNEL_ERROR") {
+          console.error(`[RT] ❌ servicio error:`, err);
+        }
+        if (status === "TIMED_OUT") {
+          console.error(`[RT] ⏰ servicio timeout`);
+        }
+      });
 
     return () => { supabase.removeChannel(canal); };
   }, [localId]);

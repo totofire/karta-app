@@ -14,11 +14,12 @@
  * sin pasar por SWR diff, para funcionar aunque el tab esté en background.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
 import { notificarNativo } from "@/lib/webNotify";
 import { notify } from "@/lib/notify";
+import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
 import type { PedidoPayload, SesionPayload } from "@/lib/supabase-types";
 
 interface Props {
@@ -35,6 +36,13 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
   useEffect(() => { onPedidoListoRef.current = onPedidoListo; }, [onPedidoListo]);
 
+  const [retryCount, setRetryCount] = useState(0);
+
+  useRealtimeReconnect({
+    mutators: [onUpdate],
+    onReconnect: () => onUpdateRef.current(),
+  });
+
   const MOTIVO_LABEL: Record<string, string> = {
     SERVILLETAS: "Servilletas",
     ADEREZOS: "Aderezos / condimentos",
@@ -50,6 +58,12 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
   useEffect(() => {
     if (!localId) return;
+    if (retryCount > 5) {
+      console.error("[RT] mozo-all: máximo de reintentos alcanzado");
+      return;
+    }
+
+    console.log(`[RT] Conectando mozo-all-${localId} (retry ${retryCount})...`);
 
     const canal = supabase
       .channel(`mozo-all-${localId}`)
@@ -162,12 +176,22 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
         },
       )
 
-      .subscribe((status) => {
-        console.log(`[MozoListener] ${status}`);
+      .subscribe((status, err) => {
+        console.log(`[RT] mozo-all status: ${status}`, err || "");
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ mozo-all activo — ${new Date().toISOString()}`);
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[RT] ❌ mozo-all ${status}:`, err);
+          setTimeout(() => {
+            supabase.removeChannel(canal);
+            setRetryCount((prev) => prev + 1);
+          }, 2000 * Math.min(retryCount + 1, 5));
+        }
       });
 
     return () => { supabase.removeChannel(canal); };
-  }, [localId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localId, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }

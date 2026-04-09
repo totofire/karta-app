@@ -51,7 +51,17 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ cliente-sesion-${sesionId} activo`);
+        }
+        if (status === "CHANNEL_ERROR") {
+          console.error(`[RT] ❌ cliente-sesion error:`, err);
+        }
+        if (status === "TIMED_OUT") {
+          console.error(`[RT] ⏰ cliente-sesion timeout`);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);

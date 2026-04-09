@@ -32,8 +32,7 @@ function AnimatedNumber({ value, prefix = "$", duration = 1000 }: any) {
 
 export default function VentasHoyPage() {
   const { data, isLoading } = useSWR("/api/admin/metricas/ventas-hoy", fetcher, {
-    refreshInterval: 30000,
-    revalidateOnFocus: true
+    revalidateOnFocus: true,
   });
 
   if (isLoading || !data) {

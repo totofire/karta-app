@@ -11,6 +11,7 @@ import { audioManager } from "@/lib/audio";
 import { notify } from "@/lib/notify";
 import { notificarNativo } from "@/lib/webNotify";
 import type { PedidoPayload, SesionPayload } from "@/lib/supabase-types";
+import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
 import {
   LayoutDashboard,
   ChefHat,
@@ -48,6 +49,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const localId: number | null = me?.localId ?? null;
   const cajaAbierta: boolean = servicio?.cajaAbierta ?? false;
 
+  // ── Retry counters para reconexión de canales ─────────────────────────────
+  const [retryPedidos, setRetryPedidos] = useState(0);
+  const [retrySesiones, setRetrySesiones] = useState(0);
+
+  // ── Reconnect centralizado ────────────────────────────────────────────────
+  useRealtimeReconnect({
+    mutators: [mutateMesas, mutateCocina, mutateBarra],
+  });
+
   const pendientesCocina = Array.isArray(cocina) ? cocina.length : 0;
   const pendientesBarra  = Array.isArray(barra)  ? barra.length  : 0;
 
@@ -68,16 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => { mutateBarraRef.current  = mutateBarra;  }, [mutateBarra]);
   useEffect(() => { mesasRef.current = Array.isArray(mesas) ? mesas : []; }, [mesas]);
 
-  // ── Reconexión al volver online ───────────────────────────────────────────
-  useEffect(() => {
-    const refresh = () => {
-      mutateRef.current();
-      mutateCocinaRef.current();
-      mutateBarraRef.current();
-    };
-    window.addEventListener("online", refresh);
-    return () => window.removeEventListener("online", refresh);
-  }, []);
+  // Reconexión al volver online → manejado por useRealtimeReconnect
 
   // ── DIFF: actualiza UI en base a cambios de SWR ───────────────────────────
   // Se usa SOLO para los toasts in-app (notify.*) cuando la pestaña está activa.
@@ -137,8 +138,12 @@ useEffect(() => {
 
   useEffect(() => {
     if (!localId) return;
+    if (retryPedidos > 5) {
+      console.error("[RT] admin-pedidos: máximo de reintentos alcanzado");
+      return;
+    }
 
-    console.log(`🔌 Conectando canal admin-pedidos-${localId}...`);
+    console.log(`[RT] Conectando admin-pedidos-${localId} (retry ${retryPedidos})...`);
 
     const canal = supabase
       .channel(`admin-pedidos-${localId}`)
@@ -150,17 +155,15 @@ useEffect(() => {
           const newRecord = payload.new as PedidoPayload;
           const oldRecord = payload.old as PedidoPayload;
 
-          console.log(`📥 [admin-pedidos] ${eventType} Pedido:`, { old: oldRecord, new: newRecord });
+          console.log(`[RT] 📥 admin-pedidos ${eventType}:`, { old: oldRecord, new: newRecord });
 
           if (eventType === "INSERT") {
-            // Buscar mesa por sesionId para el nombre
             const sesionId = newRecord.sesionId;
             const mesa = sesionId
               ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
               : undefined;
             const mesaNombre = mesa?.nombre ?? "nueva";
 
-            // Dedup por mesaId (evita doble notify si SWR diff también dispara)
             const dedupeKey = mesa?.id ?? sesionId ?? 0;
             if (!pedidosNotificadosRef.current.has(dedupeKey)) {
               pedidosNotificadosRef.current.add(dedupeKey);
@@ -179,20 +182,33 @@ useEffect(() => {
           mutateBarraRef.current();
         }
       )
-      .subscribe((status) => {
-        console.log("📡 [admin-pedidos] Estado:", status);
+      .subscribe((status, err) => {
+        console.log(`[RT] admin-pedidos status: ${status}`, err || "");
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ admin-pedidos activo — ${new Date().toISOString()}`);
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[RT] ❌ admin-pedidos ${status}:`, err);
+          setTimeout(() => {
+            supabase.removeChannel(canal);
+            setRetryPedidos((prev) => prev + 1);
+          }, 2000 * Math.min(retryPedidos + 1, 5));
+        }
       });
 
     return () => {
-      console.log(`🔌 Desconectando canal admin-pedidos-${localId}`);
       supabase.removeChannel(canal);
     };
-  }, [localId]);
+  }, [localId, retryPedidos]);
 
   useEffect(() => {
     if (!localId) return;
+    if (retrySesiones > 5) {
+      console.error("[RT] admin-sesiones: máximo de reintentos alcanzado");
+      return;
+    }
 
-    console.log(`🔌 Conectando canal admin-sesiones-${localId}...`);
+    console.log(`[RT] Conectando admin-sesiones-${localId} (retry ${retrySesiones})...`);
 
     const canal = supabase
       .channel(`admin-sesiones-${localId}`)
@@ -204,7 +220,7 @@ useEffect(() => {
           const newRecord = payload.new as SesionPayload;
           const oldRecord = payload.old as SesionPayload;
 
-          console.log(`📥 [admin-sesiones] ${eventType} Sesion:`, { old: oldRecord, new: newRecord });
+          console.log(`[RT] 📥 admin-sesiones ${eventType}:`, { old: oldRecord, new: newRecord });
 
           if (eventType !== "UPDATE") {
             mutateRef.current();
@@ -231,15 +247,24 @@ useEffect(() => {
           mutateRef.current();
         }
       )
-      .subscribe((status) => {
-        console.log("📡 [admin-sesiones] Estado:", status);
+      .subscribe((status, err) => {
+        console.log(`[RT] admin-sesiones status: ${status}`, err || "");
+        if (status === "SUBSCRIBED") {
+          console.log(`[RT] ✅ admin-sesiones activo — ${new Date().toISOString()}`);
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[RT] ❌ admin-sesiones ${status}:`, err);
+          setTimeout(() => {
+            supabase.removeChannel(canal);
+            setRetrySesiones((prev) => prev + 1);
+          }, 2000 * Math.min(retrySesiones + 1, 5));
+        }
       });
 
     return () => {
-      console.log(`🔌 Desconectando canal admin-sesiones-${localId}`);
       supabase.removeChannel(canal);
     };
-  }, [localId]);
+  }, [localId, retrySesiones]);
 
   // ── MENÚ ──────────────────────────────────────────────────────────────────
   const menuGroups = [
