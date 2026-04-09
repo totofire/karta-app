@@ -60,6 +60,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const mesasRef            = useRef<any[]>([]);
   const prevMesasRef        = useRef<any[]>([]);
   const cuentasNotificadasRef = useRef<Set<number>>(new Set());
+  const pedidosNotificadosRef = useRef<Set<number>>(new Set());
   const inicializado        = useRef(false);
 
   useEffect(() => { mutateRef.current       = mutateMesas;  }, [mutateMesas]);
@@ -97,25 +98,29 @@ useEffect(() => {
   mesas.forEach((mesa: any) => {
     const anterior = prev.find((m: any) => m.id === mesa.id);
 
-    if (!anterior && mesa.totalActual > 0) {
-      audioManager.play("ding");          // ← audio aquí, funciona
-      navigator.vibrate?.([200, 100, 200]);
-      notify.pedido("¡Nuevo pedido!", mesa.nombre);
-      return;
+    // Nuevo pedido: mesa nueva con total, o total incrementó
+    const esNuevoPedido =
+      (!anterior && mesa.totalActual > 0) ||
+      (anterior && mesa.totalActual > anterior.totalActual);
+
+    if (esNuevoPedido) {
+      // Solo notificar si el WS no lo hizo ya (dedup por mesaId)
+      if (!pedidosNotificadosRef.current.has(mesa.id)) {
+        pedidosNotificadosRef.current.add(mesa.id);
+        setTimeout(() => pedidosNotificadosRef.current.delete(mesa.id), 10_000);
+        audioManager.play("ding");
+        navigator.vibrate?.([200, 100, 200]);
+        notify.pedido("¡Nuevo pedido!", mesa.nombre);
+      }
     }
     if (!anterior) return;
 
-    if (mesa.totalActual > anterior.totalActual) {
-      audioManager.play("ding");          // ← audio aquí, funciona
-      navigator.vibrate?.([200, 100, 200]);
-      notify.pedido("¡Nuevo pedido!", mesa.nombre);
-    }
-
+    // Solicitud de cuenta (dedup compartido con canal WS)
     if (mesa.solicitaCuenta && !anterior.solicitaCuenta) {
       if (!cuentasNotificadasRef.current.has(mesa.id)) {
         cuentasNotificadasRef.current.add(mesa.id);
         setTimeout(() => cuentasNotificadasRef.current.delete(mesa.id), 10_000);
-        audioManager.play("caja");        // ← audio aquí, funciona
+        audioManager.play("caja");
         navigator.vibrate?.([300, 100, 300]);
         notify.atencion("¡Piden la cuenta!", mesa.nombre);
       }
@@ -148,7 +153,25 @@ useEffect(() => {
           console.log(`📥 [admin-pedidos] ${eventType} Pedido:`, { old: oldRecord, new: newRecord });
 
           if (eventType === "INSERT") {
-            notificarNativo("🍽️ Nuevo pedido", "Hay un nuevo pedido esperando", "pedido-nuevo");
+            // Buscar mesa por sesionId para el nombre
+            const sesionId = newRecord.sesionId;
+            const mesa = sesionId
+              ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
+              : undefined;
+            const mesaNombre = mesa?.nombre ?? "nueva";
+
+            // Dedup por mesaId (evita doble notify si SWR diff también dispara)
+            const dedupeKey = mesa?.id ?? sesionId ?? 0;
+            if (!pedidosNotificadosRef.current.has(dedupeKey)) {
+              pedidosNotificadosRef.current.add(dedupeKey);
+              setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
+
+              audioManager.play("ding");
+              navigator.vibrate?.([200, 100, 200]);
+              notify.pedido("¡Nuevo pedido!", mesaNombre);
+            }
+
+            notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
           }
 
           mutateRef.current();
@@ -198,6 +221,10 @@ useEffect(() => {
             }
             const mesaNombre =
               mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? (mesaId !== undefined ? `#${mesaId}` : "desconocida");
+
+            audioManager.play("caja");
+            navigator.vibrate?.([300, 100, 300]);
+            notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
             notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, mesaId !== undefined ? `cuenta-${mesaId}` : "cuenta");
           }
 

@@ -1,6 +1,17 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\tomi0\\sistema-pedidos\\app\\api\\superadmin\\locales\\[id]",
+      "C:\\Users\\tomi0\\sistema-pedidos\\app\\superadmin\\locales"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
