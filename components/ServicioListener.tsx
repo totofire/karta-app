@@ -9,29 +9,23 @@ export default function ServicioListener({ localId }: { localId: number }) {
   useEffect(() => { routerRef.current = router; }, [router]);
 
   useEffect(() => {
+    console.log(`[RT] Conectando broadcast servicio local-${localId}...`);
+
     const canal = supabase
-      .channel(`servicio-${localId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "Configuracion",
-          filter: `localId=eq.${localId}`,
-        },
-        () => {
-          routerRef.current.refresh();
-        },
-      )
+      .channel(`local-${localId}-servicio`)
+      .on("broadcast", { event: "config:update" }, () => {
+        console.log("[RT] 📥 config:update — refrescando");
+        routerRef.current.refresh();
+      })
       .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[RT] ✅ servicio-${localId} activo`);
+          console.log(`[RT] ✅ servicio local-${localId} activo`);
         }
         if (status === "CHANNEL_ERROR") {
-          console.error(`[RT] ❌ servicio error:`, err);
+          console.error("[RT] ❌ servicio error:", err);
         }
         if (status === "TIMED_OUT") {
-          console.error(`[RT] ⏰ servicio timeout`);
+          console.error("[RT] ⏰ servicio timeout");
         }
       });
 

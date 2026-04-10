@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
+import { broadcastPedido, broadcastCliente } from "@/lib/broadcast";
 
 export async function PATCH(
   request: Request,
@@ -37,8 +38,14 @@ export async function PATCH(
     const pedidoActualizado = await prisma.pedido.update({
       where: { id: pedidoId },
       data: dataUpdate,
+      include: { sesion: { select: { id: true } } },
     });
-    
+
+    await broadcastPedido(localId, "update", { pedidoId, estado: pedidoActualizado.estado });
+    if (pedidoActualizado.sesion) {
+      await broadcastCliente(pedidoActualizado.sesion.id, "update", { pedidoId, estado: pedidoActualizado.estado });
+    }
+
     return NextResponse.json(pedidoActualizado);
 
   } catch (error) {

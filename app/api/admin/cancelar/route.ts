@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
+import { broadcastPedido } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   const localId = await getLocalId();
@@ -24,11 +25,17 @@ export async function POST(req: Request) {
     // 2. Actualizar
     const pedido = await prisma.pedido.update({
       where: { id: pedidoId },
-      data: { 
+      data: {
         estado: "CANCELADO",
-        // motivo: motivo (si agregas el campo a la BD)
       },
+      include: { sesion: { select: { id: true } } },
     });
+
+    await broadcastPedido(localId, "update", { pedidoId, estado: "CANCELADO" });
+    if (pedido.sesion) {
+      const { broadcastCliente } = await import("@/lib/broadcast");
+      await broadcastCliente(pedido.sesion.id, "update", { pedidoId, estado: "CANCELADO" });
+    }
 
     return NextResponse.json(pedido);
   } catch (error) {

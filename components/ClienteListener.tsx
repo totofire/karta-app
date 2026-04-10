@@ -10,56 +10,47 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
   const router = useRouter();
 
   useEffect(() => {
-    console.log(`📡 Escuchando pedidos para sesión #${sesionId}`);
+    console.log(`[RT] Conectando broadcast sesion-${sesionId}...`);
 
     const channel = supabase
-      .channel(`cliente-sesion-${sesionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'pedido',
-          filter: `sesionId=eq.${sesionId}`,
-        },
-        (payload) => {
-          const nuevoEstado = payload.new.estado;
-          const viejoEstado = payload.old.estado;
+      .channel(`sesion-${sesionId}`)
+      .on('broadcast', { event: 'pedido:update' }, (msg) => {
+        const data = msg.payload as Record<string, any>;
+        const estado = data?.estado as string | undefined;
+        console.log('[RT] 📥 cliente pedido:update', data);
 
-          if (nuevoEstado !== viejoEstado) {
-            // 1. CANCELADO
-            if (nuevoEstado === 'CANCELADO') {
-              if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                navigator.vibrate([100, 50, 100, 50, 100]);
-              }
-              // Solo mostramos alerta si fue cancelado por cocina/admin,
-              // no si lo canceló el propio cliente (el cliente ya vio su toast)
-              if (viejoEstado !== 'PENDIENTE') {
-                mostrarAlertaCancelacion();
-              }
-              router.refresh();
-            }
-
-            // 2. ENTREGADO — refrescamos datos para que el botón cancelar desaparezca
-            if (nuevoEstado === 'ENTREGADO') {
-              if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                navigator.vibrate([200, 100, 200]);
-              }
-              mostrarAlertaExito();
-              router.refresh();
-            }
+        if (estado === 'CANCELADO') {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100, 50, 100]);
           }
+          mostrarAlertaCancelacion();
+          router.refresh();
         }
-      )
+
+        if (estado === 'ENTREGADO') {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+          }
+          mostrarAlertaExito();
+          router.refresh();
+        }
+
+        if (estado === 'CERRADA') {
+          router.refresh();
+        }
+      })
+      .on('broadcast', { event: 'pedido:insert' }, () => {
+        router.refresh();
+      })
       .subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          console.log(`[RT] ✅ cliente-sesion-${sesionId} activo`);
+        if (status === 'SUBSCRIBED') {
+          console.log(`[RT] ✅ sesion-${sesionId} activo`);
         }
-        if (status === "CHANNEL_ERROR") {
-          console.error(`[RT] ❌ cliente-sesion error:`, err);
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[RT] ❌ cliente-sesion error:', err);
         }
-        if (status === "TIMED_OUT") {
-          console.error(`[RT] ⏰ cliente-sesion timeout`);
+        if (status === 'TIMED_OUT') {
+          console.error('[RT] ⏰ cliente-sesion timeout');
         }
       });
 
@@ -70,7 +61,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
 
   const mostrarAlertaCancelacion = () => {
     toast.custom((t) => (
-      <div className={`${t.visible ? 'animate-in fade-in slide-in-from-top-5' : 'animate-out fade-out slide-out-to-top-5'} 
+      <div className={`${t.visible ? 'animate-in fade-in slide-in-from-top-5' : 'animate-out fade-out slide-out-to-top-5'}
         max-w-md w-full bg-white shadow-2xl rounded-2xl pointer-events-auto flex overflow-hidden ring-1 ring-black/5`}>
         <div className="w-2 bg-red-500" />
         <div className="flex-1 p-4">

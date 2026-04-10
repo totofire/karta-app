@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
+import { broadcastSesion, broadcastMesa } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   try {
@@ -55,10 +56,12 @@ export async function POST(req: Request) {
           tokenEfimero: nuevoToken,
           nombreHost: "Mozo",
           fechaInicio: new Date(),
-          // Opcional: expira en 4 horas
-          expiraEn: new Date(Date.now() + 4 * 60 * 60 * 1000) 
+          expiraEn: new Date(Date.now() + 4 * 60 * 60 * 1000)
         },
       });
+
+      await broadcastSesion(mesa.localId, "insert", { sesionId: nuevaSesion.id, mesaId: mesaIdInt });
+      await broadcastMesa(mesa.localId, "update", { mesaId: mesaIdInt });
 
       return NextResponse.json({ token: nuevaSesion.tokenEfimero });
     }

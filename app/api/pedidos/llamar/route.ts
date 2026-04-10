@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { broadcastSesion } from "@/lib/broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ya hay un llamado activo" }, { status: 409 });
   }
 
-  await prisma.sesion.update({
+  const sesionActualizada = await prisma.sesion.update({
     where: { id: sesion.id },
     data: { llamadaMozo: motivo },
+    select: { id: true, localId: true, mesaId: true },
+  });
+
+  await broadcastSesion(sesionActualizada.localId, "update", {
+    sesionId: sesionActualizada.id,
+    mesaId: sesionActualizada.mesaId,
+    llamadaMozo: motivo,
   });
 
   return NextResponse.json({ ok: true });
@@ -60,9 +68,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "No encontrada" }, { status: 404 });
   }
 
-  await prisma.sesion.update({
+  const sesionLimpia = await prisma.sesion.update({
     where: { id: sesion.id },
     data: { llamadaMozo: null },
+    select: { id: true, localId: true, mesaId: true },
+  });
+
+  await broadcastSesion(sesionLimpia.localId, "update", {
+    sesionId: sesionLimpia.id,
+    mesaId: sesionLimpia.mesaId,
+    llamadaMozo: null,
   });
 
   return NextResponse.json({ ok: true });

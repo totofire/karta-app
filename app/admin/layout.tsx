@@ -10,7 +10,6 @@ import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
 import { notify } from "@/lib/notify";
 import { notificarNativo } from "@/lib/webNotify";
-import type { PedidoPayload, SesionPayload } from "@/lib/supabase-types";
 import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
 import {
   LayoutDashboard,
@@ -48,10 +47,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { data: servicio } = useSWR("/api/admin/servicio", fetcherServicio, { revalidateOnFocus: true });
   const localId: number | null = me?.localId ?? null;
   const cajaAbierta: boolean = servicio?.cajaAbierta ?? false;
-
-  // ── Retry counters para reconexión de canales ─────────────────────────────
-  const [retryPedidos, setRetryPedidos] = useState(0);
-  const [retrySesiones, setRetrySesiones] = useState(0);
 
   // ── Reconnect centralizado ────────────────────────────────────────────────
   useRealtimeReconnect({
@@ -131,140 +126,99 @@ useEffect(() => {
   prevMesasRef.current = mesas;
 }, [mesas]);
 
-  // ── CANALES SUPABASE (1 canal por tabla) ──────────────────────────────────
-  // El WebSocket NO es throttleado por Chrome en pestañas de fondo.
-  // Por eso las notificaciones nativas del OS se disparan aquí directamente,
-  // sin esperar el fetch de SWR (que sí puede demorarse en background).
-
+  // ── CANAL BROADCAST (reemplaza postgres_changes) ───────────────────────────
   useEffect(() => {
     if (!localId) return;
-    if (retryPedidos > 5) {
-      console.error("[RT] admin-pedidos: máximo de reintentos alcanzado");
-      return;
-    }
 
-    console.log(`[RT] Conectando admin-pedidos-${localId} (retry ${retryPedidos})...`);
+    console.log(`[RT] Conectando broadcast local-${localId}...`);
 
     const canal = supabase
-      .channel(`admin-pedidos-${localId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
-        (payload) => {
-          const eventType = payload.eventType;
-          const newRecord = payload.new as PedidoPayload;
-          const oldRecord = payload.old as PedidoPayload;
+      .channel(`local-${localId}`)
+      .on("broadcast", { event: "pedido:insert" }, (msg) => {
+        const data = msg.payload as Record<string, any>;
+        console.log("[RT] 📥 pedido:insert", data);
 
-          console.log(`[RT] 📥 admin-pedidos ${eventType}:`, { old: oldRecord, new: newRecord });
+        const sesionId = data?.sesionId as number | undefined;
+        const mesa = sesionId
+          ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
+          : undefined;
+        const mesaNombre = mesa?.nombre ?? "nueva";
 
-          if (eventType === "INSERT") {
-            const sesionId = newRecord.sesionId;
-            const mesa = sesionId
-              ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
-              : undefined;
-            const mesaNombre = mesa?.nombre ?? "nueva";
-
-            const dedupeKey = mesa?.id ?? sesionId ?? 0;
-            if (!pedidosNotificadosRef.current.has(dedupeKey)) {
-              pedidosNotificadosRef.current.add(dedupeKey);
-              setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
-
-              audioManager.play("ding");
-              navigator.vibrate?.([200, 100, 200]);
-              notify.pedido("¡Nuevo pedido!", mesaNombre);
-            }
-
-            notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
-          }
-
-          mutateRef.current();
-          mutateCocinaRef.current();
-          mutateBarraRef.current();
+        const dedupeKey = mesa?.id ?? sesionId ?? 0;
+        if (!pedidosNotificadosRef.current.has(dedupeKey)) {
+          pedidosNotificadosRef.current.add(dedupeKey);
+          setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
+          audioManager.play("ding");
+          navigator.vibrate?.([200, 100, 200]);
+          notify.pedido("¡Nuevo pedido!", mesaNombre);
         }
-      )
-      .subscribe((status, err) => {
-        console.log(`[RT] admin-pedidos status: ${status}`, err || "");
-        if (status === "SUBSCRIBED") {
-          console.log(`[RT] ✅ admin-pedidos activo — ${new Date().toISOString()}`);
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[RT] ❌ admin-pedidos ${status}:`, err);
-          setTimeout(() => {
-            supabase.removeChannel(canal);
-            setRetryPedidos((prev) => prev + 1);
-          }, 2000 * Math.min(retryPedidos + 1, 5));
-        }
-      });
+        notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
 
-    return () => {
-      supabase.removeChannel(canal);
-    };
-  }, [localId, retryPedidos]);
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
+      .on("broadcast", { event: "pedido:update" }, (msg) => {
+        console.log("[RT] 📥 pedido:update", msg.payload);
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
+      .on("broadcast", { event: "pedido:delete" }, () => {
+        mutateRef.current();
+        mutateCocinaRef.current();
+        mutateBarraRef.current();
+      })
+      .on("broadcast", { event: "sesion:insert" }, () => {
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "sesion:update" }, (msg) => {
+        const data = msg.payload as Record<string, any>;
+        console.log("[RT] 📥 sesion:update", data);
 
-  useEffect(() => {
-    if (!localId) return;
-    if (retrySesiones > 5) {
-      console.error("[RT] admin-sesiones: máximo de reintentos alcanzado");
-      return;
-    }
-
-    console.log(`[RT] Conectando admin-sesiones-${localId} (retry ${retrySesiones})...`);
-
-    const canal = supabase
-      .channel(`admin-sesiones-${localId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
-        (payload) => {
-          const eventType = payload.eventType;
-          const newRecord = payload.new as SesionPayload;
-          const oldRecord = payload.old as SesionPayload;
-
-          console.log(`[RT] 📥 admin-sesiones ${eventType}:`, { old: oldRecord, new: newRecord });
-
-          if (eventType !== "UPDATE") {
-            mutateRef.current();
-            return;
-          }
-
-          const pideCuenta = !oldRecord.solicitaCuenta && !!newRecord.solicitaCuenta;
-          if (pideCuenta) {
-            const mesaId = newRecord.mesaId;
-            if (mesaId !== undefined) {
-              if (cuentasNotificadasRef.current.has(mesaId)) return;
-              cuentasNotificadasRef.current.add(mesaId);
-              setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15000);
-            }
+        if (data?.solicitaCuenta) {
+          const mesaId = data.mesaId as number | undefined;
+          if (mesaId && !cuentasNotificadasRef.current.has(mesaId)) {
+            cuentasNotificadasRef.current.add(mesaId);
+            setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15_000);
             const mesaNombre =
-              mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? (mesaId !== undefined ? `#${mesaId}` : "desconocida");
-
+              mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
             audioManager.play("caja");
             navigator.vibrate?.([300, 100, 300]);
             notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
-            notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, mesaId !== undefined ? `cuenta-${mesaId}` : "cuenta");
+            notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
           }
-
-          mutateRef.current();
         }
-      )
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "sesion:delete" }, () => {
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "mesa:insert" }, () => {
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "mesa:update" }, () => {
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "mesa:delete" }, () => {
+        mutateRef.current();
+      })
+      .on("broadcast", { event: "config:update" }, () => {
+        // Recargar datos de servicio (cajaAbierta, etc)
+        mutateRef.current();
+      })
       .subscribe((status, err) => {
-        console.log(`[RT] admin-sesiones status: ${status}`, err || "");
+        console.log(`[RT] local-${localId} status: ${status}`, err || "");
         if (status === "SUBSCRIBED") {
-          console.log(`[RT] ✅ admin-sesiones activo — ${new Date().toISOString()}`);
+          console.log(`[RT] ✅ local-${localId} activo — ${new Date().toISOString()}`);
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[RT] ❌ admin-sesiones ${status}:`, err);
-          setTimeout(() => {
-            supabase.removeChannel(canal);
-            setRetrySesiones((prev) => prev + 1);
-          }, 2000 * Math.min(retrySesiones + 1, 5));
+          console.error(`[RT] ❌ local-${localId} ${status}:`, err);
         }
       });
 
-    return () => {
-      supabase.removeChannel(canal);
-    };
-  }, [localId, retrySesiones]);
+    return () => { supabase.removeChannel(canal); };
+  }, [localId]);
 
   // ── MENÚ ──────────────────────────────────────────────────────────────────
   const menuGroups = [

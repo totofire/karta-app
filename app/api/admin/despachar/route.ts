@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
+import { broadcastPedido } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   const localId = await getLocalId();
@@ -40,19 +41,20 @@ export async function POST(req: Request) {
 
     // 3. Actualizar estado del pedido padre
     if (itemsPendientesTotal === 0) {
-      // Pedido 100% listo → guardamos el timestamp de despacho para analytics
       await prisma.pedido.update({
         where: { id: Number(pedidoId) },
         data: {
           estado:        "ENTREGADO",
-          fechaDespacho: new Date(), // 🔥 tiempo real de espera del cliente
+          fechaDespacho: new Date(),
         },
       });
+      await broadcastPedido(localId, "update", { pedidoId: Number(pedidoId), estado: "ENTREGADO" });
     } else {
       await prisma.pedido.update({
         where: { id: Number(pedidoId) },
         data:  { estado: "EN_PREPARACION" },
       });
+      await broadcastPedido(localId, "update", { pedidoId: Number(pedidoId), estado: "EN_PREPARACION" });
     }
 
     return NextResponse.json({ success: true });

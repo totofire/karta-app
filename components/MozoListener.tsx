@@ -1,30 +1,25 @@
 "use client";
 
 /**
- * MozoListener — canal único Supabase Realtime para el panel del mozo.
+ * MozoListener — canal broadcast Supabase Realtime para el panel del mozo.
  *
- * Escucha, filtrado por localId:
- *  • INSERT Pedido  → nuevo pedido de cliente  (ding + toast + notificación OS)
- *  • UPDATE Pedido  → pedido entregado por cocina/barra (ding + toast + OS)
- *  • *      Mesa    → mesa abierta/cerrada      (mutate)
- *  • INSERT Sesion  → sesión nueva              (mutate)
- *  • UPDATE Sesion  → solicitaCuenta / cierre   (caja + toast + OS si pide cuenta)
- *
- * Todas las notificaciones se disparan DIRECTAMENTE desde el callback WebSocket,
- * sin pasar por SWR diff, para funcionar aunque el tab esté en background.
+ * Escucha broadcasts en canal `local-{localId}`:
+ *  • pedido:insert  → nuevo pedido de cliente  (ding + toast + notificación OS)
+ *  • pedido:update  → pedido entregado por cocina/barra (ding + toast + OS)
+ *  • mesa:*         → mesa abierta/cerrada      (mutate)
+ *  • sesion:insert  → sesión nueva              (mutate)
+ *  • sesion:update  → solicitaCuenta / llamadaMozo / cierre (caja + toast + OS)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
 import { notificarNativo } from "@/lib/webNotify";
 import { notify } from "@/lib/notify";
 import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
-import type { PedidoPayload, SesionPayload } from "@/lib/supabase-types";
 
 interface Props {
   localId: number;
-  /** Ref a la lista de mesas actual (para obtener nombres en callbacks) */
   mesasRef: React.MutableRefObject<any[]>;
   onUpdate: () => void;
   onPedidoListo: (mesaId: number, tipo: "cocina" | "barra" | "ambos") => void;
@@ -35,8 +30,6 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
   const onPedidoListoRef = useRef(onPedidoListo);
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
   useEffect(() => { onPedidoListoRef.current = onPedidoListo; }, [onPedidoListo]);
-
-  const [retryCount, setRetryCount] = useState(0);
 
   useRealtimeReconnect({
     mutators: [onUpdate],
@@ -51,147 +44,131 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
     OTRO: "Necesita atención",
   };
 
-  // Sets para evitar notificaciones duplicadas
   const pedidosNotif = useRef<Set<number>>(new Set());
   const cuentasNotif = useRef<Set<number>>(new Set());
   const llamadosNotif = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!localId) return;
-    if (retryCount > 5) {
-      console.error("[RT] mozo-all: máximo de reintentos alcanzado");
-      return;
-    }
 
-    console.log(`[RT] Conectando mozo-all-${localId} (retry ${retryCount})...`);
+    console.log(`[RT] Conectando broadcast mozo local-${localId}...`);
 
     const canal = supabase
-      .channel(`mozo-all-${localId}`)
+      .channel(`local-${localId}-mozo`)
 
       /* ── 1. NUEVO PEDIDO ─────────────────────────────────── */
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
-        (payload) => {
-          const p = payload.new as PedidoPayload;
-          if (!p.id) return;
-          if (pedidosNotif.current.has(p.id)) return;
-          pedidosNotif.current.add(p.id);
-          setTimeout(() => pedidosNotif.current.delete(p.id!), 10_000);
+      .on("broadcast", { event: "pedido:insert" }, (msg) => {
+        const p = msg.payload as Record<string, any>;
+        console.log("[RT] 📥 mozo pedido:insert", p);
 
-          onUpdateRef.current();
+        const pedidoId = p?.pedidoId as number | undefined;
+        if (!pedidoId) return;
+        if (pedidosNotif.current.has(pedidoId)) return;
+        pedidosNotif.current.add(pedidoId);
+        setTimeout(() => pedidosNotif.current.delete(pedidoId), 10_000);
+
+        onUpdateRef.current();
+        audioManager.play("ding");
+        navigator.vibrate?.([100, 50, 100]);
+        notify.pedido("¡Nuevo pedido!", (p?.nombreCliente as string) ?? "");
+        notificarNativo("¡Nuevo pedido!", (p?.nombreCliente as string) ?? "", `pedido-${pedidoId}`);
+      })
+
+      /* ── 2. PEDIDO ACTUALIZADO (entregado / cancelado) ───── */
+      .on("broadcast", { event: "pedido:update" }, async (msg) => {
+        const data = msg.payload as Record<string, any>;
+        console.log("[RT] 📥 mozo pedido:update", data);
+
+        onUpdateRef.current();
+
+        const estado = data?.estado as string | undefined;
+        const pedidoId = data?.pedidoId as number | undefined;
+
+        if (estado !== "ENTREGADO" || !pedidoId) return;
+
+        try {
+          const res = await fetch(`/api/mozo/pedido-listo?pedidoId=${pedidoId}`);
+          if (!res.ok) return;
+          const { mesaId, mesaNombre, tipo } = await res.json();
+
           audioManager.play("ding");
-          navigator.vibrate?.([100, 50, 100]);
-          notify.pedido("¡Nuevo pedido!", p.nombreCliente ?? "");
-          notificarNativo("¡Nuevo pedido!", p.nombreCliente ?? "", `pedido-${p.id}`);
-        },
-      )
+          navigator.vibrate?.([100, 50, 200]);
+          notify.pedidoListo(mesaNombre, tipo);
+          notificarNativo(
+            tipo === "ambos" ? "¡Todo listo!" : tipo === "barra" ? "¡Bebida lista!" : "¡Plato listo!",
+            `Mesa ${mesaNombre}`,
+            `listo-${pedidoId}`,
+          );
+          onPedidoListoRef.current(mesaId, tipo);
+        } catch { /* fetch failed, mutate ya corrió */ }
+      })
 
-      /* ── 2. PEDIDO ENTREGADO (cocina/barra listo) ─────────── */
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
-        async (payload) => {
-          const n = payload.new as PedidoPayload;
-          const o = payload.old as PedidoPayload;
+      /* ── 3. PEDIDO ELIMINADO ─────────────────────────────── */
+      .on("broadcast", { event: "pedido:delete" }, () => {
+        onUpdateRef.current();
+      })
 
-          onUpdateRef.current();
+      /* ── 4. CAMBIOS DE MESA ──────────────────────────────── */
+      .on("broadcast", { event: "mesa:insert" }, () => { onUpdateRef.current(); })
+      .on("broadcast", { event: "mesa:update" }, () => { onUpdateRef.current(); })
+      .on("broadcast", { event: "mesa:delete" }, () => { onUpdateRef.current(); })
 
-          if (n.estado !== "ENTREGADO" || o.estado === "ENTREGADO") return;
-          if (!n.id) return;
+      /* ── 5. SESIÓN NUEVA ─────────────────────────────────── */
+      .on("broadcast", { event: "sesion:insert" }, () => { onUpdateRef.current(); })
 
-          try {
-            const res = await fetch(`/api/mozo/pedido-listo?pedidoId=${n.id}`);
-            if (!res.ok) return;
-            const { mesaId, mesaNombre, tipo } = await res.json();
+      /* ── 6. SESIÓN ACTUALIZADA (cuenta / llamado / cierre) ─ */
+      .on("broadcast", { event: "sesion:update" }, (msg) => {
+        const data = msg.payload as Record<string, any>;
+        console.log("[RT] 📥 mozo sesion:update", data);
 
+        onUpdateRef.current();
+
+        // Detectar llamado al mozo
+        const llamadaMozo = data?.llamadaMozo as string | null | undefined;
+        if (llamadaMozo) {
+          const keyLlamado = (data?.mesaId as number) ?? 0;
+          if (!llamadosNotif.current.has(keyLlamado)) {
+            llamadosNotif.current.add(keyLlamado);
+            setTimeout(() => llamadosNotif.current.delete(keyLlamado), 15_000);
+            const nombreMesa = mesasRef.current.find((m) => m.id === data?.mesaId)?.nombre ?? `#${keyLlamado}`;
+            const motivoTexto = MOTIVO_LABEL[llamadaMozo] ?? "Necesita atención";
             audioManager.play("ding");
-            navigator.vibrate?.([100, 50, 200]);
-            notify.pedidoListo(mesaNombre, tipo);
-            notificarNativo(
-              tipo === "ambos" ? "¡Todo listo!" : tipo === "barra" ? "¡Bebida lista!" : "¡Plato listo!",
-              `Mesa ${mesaNombre}`,
-              `listo-${n.id}`,
-            );
-            onPedidoListoRef.current(mesaId, tipo);
-          } catch {}
-        },
-      )
-
-      /* ── 3. CAMBIOS DE MESA ───────────────────────────────── */
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Mesa", filter: `localId=eq.${localId}` },
-        () => { onUpdateRef.current(); },
-      )
-
-      /* ── 4. SESIÓN NUEVA ─────────────────────────────────── */
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
-        () => { onUpdateRef.current(); },
-      )
-
-      /* ── 5. SESIÓN ACTUALIZADA (cuenta / cierre) ─────────── */
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
-        (payload) => {
-          const n = payload.new as SesionPayload;
-          const o = payload.old as SesionPayload;
-
-          onUpdateRef.current();
-
-          // Detectar llamado al mozo nuevo
-          if (n.llamadaMozo && !o.llamadaMozo) {
-            const keyLlamado = n.mesaId ?? 0;
-            if (!llamadosNotif.current.has(keyLlamado)) {
-              llamadosNotif.current.add(keyLlamado);
-              setTimeout(() => llamadosNotif.current.delete(keyLlamado), 15_000);
-              const nombreMesa = mesasRef.current.find((m) => m.id === n.mesaId)?.nombre ?? `#${keyLlamado}`;
-              const motivoTexto = MOTIVO_LABEL[n.llamadaMozo] ?? "Necesita atención";
-              audioManager.play("ding");
-              navigator.vibrate?.([200, 100, 200]);
-              notify.atencion("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`);
-              notificarNativo("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`, `llamado-${keyLlamado}`);
-            }
+            navigator.vibrate?.([200, 100, 200]);
+            notify.atencion("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`);
+            notificarNativo("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`, `llamado-${keyLlamado}`);
           }
+        }
 
-          // Detectar solicitud de cuenta nueva
-          if (!n.solicitaCuenta || o.solicitaCuenta) return;
+        // Detectar solicitud de cuenta
+        if (!data?.solicitaCuenta) return;
+        const key = (data?.mesaId as number) ?? 0;
+        if (cuentasNotif.current.has(key)) return;
+        cuentasNotif.current.add(key);
+        setTimeout(() => cuentasNotif.current.delete(key), 15_000);
 
-          const key = n.mesaId ?? 0;
-          if (cuentasNotif.current.has(key)) return;
-          cuentasNotif.current.add(key);
-          setTimeout(() => cuentasNotif.current.delete(key), 15_000);
+        const nombreMesa =
+          mesasRef.current.find((m) => m.id === data?.mesaId)?.nombre ?? `#${key}`;
 
-          // Buscar nombre de mesa en los datos cacheados
-          const nombreMesa =
-            mesasRef.current.find((m) => m.id === n.mesaId)?.nombre ?? `#${key}`;
+        audioManager.play("caja");
+        navigator.vibrate?.([300, 100, 300]);
+        notify.atencion("¡Piden la cuenta!", `Mesa ${nombreMesa}`);
+        notificarNativo("¡Piden la cuenta!", `Mesa ${nombreMesa}`, `cuenta-${key}`);
+      })
 
-          audioManager.play("caja");
-          navigator.vibrate?.([300, 100, 300]);
-          notify.atencion("¡Piden la cuenta!", `Mesa ${nombreMesa}`);
-          notificarNativo("¡Piden la cuenta!", `Mesa ${nombreMesa}`, `cuenta-${key}`);
-        },
-      )
+      .on("broadcast", { event: "sesion:delete" }, () => { onUpdateRef.current(); })
 
       .subscribe((status, err) => {
-        console.log(`[RT] mozo-all status: ${status}`, err || "");
+        console.log(`[RT] mozo local-${localId} status: ${status}`, err || "");
         if (status === "SUBSCRIBED") {
-          console.log(`[RT] ✅ mozo-all activo — ${new Date().toISOString()}`);
+          console.log(`[RT] ✅ mozo local-${localId} activo — ${new Date().toISOString()}`);
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[RT] ❌ mozo-all ${status}:`, err);
-          setTimeout(() => {
-            supabase.removeChannel(canal);
-            setRetryCount((prev) => prev + 1);
-          }, 2000 * Math.min(retryCount + 1, 5));
+          console.error(`[RT] ❌ mozo ${status}:`, err);
         }
       });
 
     return () => { supabase.removeChannel(canal); };
-  }, [localId, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
