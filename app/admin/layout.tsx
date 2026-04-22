@@ -8,7 +8,7 @@ import NotificationsManager from "@/components/NotificationsManager";
 import useSWR from "swr";
 import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
-import { notify } from "@/lib/notify";
+import { notify, vibrar } from "@/lib/notify";
 import { notificarNativo } from "@/lib/webNotify";
 import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
 import {
@@ -105,7 +105,7 @@ useEffect(() => {
         pedidosNotificadosRef.current.add(mesa.id);
         setTimeout(() => pedidosNotificadosRef.current.delete(mesa.id), 10_000);
         audioManager.play("ding");
-        navigator.vibrate?.([200, 100, 200]);
+        vibrar([200, 100, 200]);
         notify.pedido("¡Nuevo pedido!", mesa.nombre);
       }
     }
@@ -117,7 +117,7 @@ useEffect(() => {
         cuentasNotificadasRef.current.add(mesa.id);
         setTimeout(() => cuentasNotificadasRef.current.delete(mesa.id), 10_000);
         audioManager.play("caja");
-        navigator.vibrate?.([300, 100, 300]);
+        vibrar([300, 100, 300]);
         notify.atencion("¡Piden la cuenta!", mesa.nombre);
       }
     }
@@ -151,7 +151,7 @@ useEffect(() => {
             pedidosNotificadosRef.current.add(dedupeKey);
             setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
             audioManager.play("ding");
-            navigator.vibrate?.([200, 100, 200]);
+            vibrar([200, 100, 200]);
             notify.pedido("¡Nuevo pedido!", mesaNombre);
           }
           notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
@@ -192,7 +192,7 @@ useEffect(() => {
                 const mesaNombre =
                   mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
                 audioManager.play("caja");
-                navigator.vibrate?.([300, 100, 300]);
+                vibrar([300, 100, 300]);
                 notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
                 notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
               }

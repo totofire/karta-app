@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { audioManager } from "@/lib/audio";
 import { notificarNativo } from "@/lib/webNotify";
-import { notify } from "@/lib/notify";
+import { notify, vibrar } from "@/lib/notify";
 import { useRealtimeReconnect } from "@/hooks/useRealtimeReconnect";
 
 interface Props {
@@ -59,7 +59,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
           onUpdateRef.current();
           audioManager.play("ding");
-          navigator.vibrate?.([100, 50, 100]);
+          vibrar([100, 50, 100]);
           const nombreCliente = (nuevo.nombreCliente as string) ?? "";
           notify.pedido("¡Nuevo pedido!", nombreCliente);
           notificarNativo("¡Nuevo pedido!", nombreCliente, `pedido-${pedidoId}`);
@@ -86,7 +86,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
             const { mesaId, mesaNombre, tipo } = await res.json();
 
             audioManager.play("ding");
-            navigator.vibrate?.([100, 50, 200]);
+            vibrar([100, 50, 200]);
             notify.pedidoListo(mesaNombre, tipo);
             notificarNativo(
               tipo === "ambos" ? "¡Todo listo!" : tipo === "barra" ? "¡Bebida lista!" : "¡Plato listo!",
@@ -131,7 +131,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
               const nombreMesa  = mesasRef.current.find((m) => m.id === nuevo.mesaId)?.nombre ?? `#${keyLlamado}`;
               const motivoTexto = MOTIVO_LABEL[llamadaMozo] ?? "Necesita atención";
               audioManager.play("ding");
-              navigator.vibrate?.([200, 100, 200]);
+              vibrar([200, 100, 200]);
               notify.atencion("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`);
               notificarNativo("¡Te llaman!", `Mesa ${nombreMesa} — ${motivoTexto}`, `llamado-${keyLlamado}`);
             }
@@ -146,7 +146,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
               const nombreMesa =
                 mesasRef.current.find((m) => m.id === nuevo.mesaId)?.nombre ?? `#${key}`;
               audioManager.play("caja");
-              navigator.vibrate?.([300, 100, 300]);
+              vibrar([300, 100, 300]);
               notify.atencion("¡Piden la cuenta!", `Mesa ${nombreMesa}`);
               notificarNativo("¡Piden la cuenta!", `Mesa ${nombreMesa}`, `cuenta-${key}`);
             }

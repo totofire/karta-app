@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npx prisma *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\tomi0\\sistema-pedidos\\app\\api\\superadmin\\locales\\[id]",

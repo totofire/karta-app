@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import { AlertCircle, ChefHat, X, UtensilsCrossed } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { vibrar } from '@/lib/notify';
 
 export default function ClienteListener({ sesionId }: { sesionId: number }) {
   const router = useRouter();
@@ -22,17 +23,13 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
           console.log('[RT] 📥 cliente pedido UPDATE', nuevo);
 
           if (estado === 'CANCELADO') {
-            if (typeof navigator !== 'undefined' && navigator.vibrate) {
-              navigator.vibrate([100, 50, 100, 50, 100]);
-            }
+            vibrar([100, 50, 100, 50, 100]);
             mostrarAlertaCancelacion();
             router.refresh();
           }
 
           if (estado === 'ENTREGADO') {
-            if (typeof navigator !== 'undefined' && navigator.vibrate) {
-              navigator.vibrate([200, 100, 200]);
-            }
+            vibrar([200, 100, 200]);
             mostrarAlertaExito();
             router.refresh();
           }

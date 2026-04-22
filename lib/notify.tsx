@@ -11,10 +11,16 @@ import {
 } from 'lucide-react';
 import { Flame, GlassWater } from 'lucide-react';
 
-// Configuraciones de vibración
-const vibrateSuccess = () => typeof navigator !== 'undefined' && navigator.vibrate?.([100, 50, 100]);
-const vibrateError = () => typeof navigator !== 'undefined' && navigator.vibrate?.([200, 100, 200]);
-const vibrateWarning = () => typeof navigator !== 'undefined' && navigator.vibrate?.([300]);
+// Vibra solo si el usuario ya interactuó con la página (requerido por Chrome)
+export const vibrar = (pattern: number[]) => {
+  if (typeof navigator === 'undefined') return;
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+  navigator.vibrate?.(pattern);
+};
+
+const vibrateSuccess = () => vibrar([100, 50, 100]);
+const vibrateError   = () => vibrar([200, 100, 200]);
+const vibrateWarning = () => vibrar([300]);
 
 export const notify = {
   // 1. ÉXITO (Estilo Card Verde/Premium - Ideal para "Pedido Listo" o "Guardado")
