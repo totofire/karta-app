@@ -103,7 +103,7 @@ useEffect(() => {
       // Solo notificar si el WS no lo hizo ya (dedup por mesaId)
       if (!pedidosNotificadosRef.current.has(mesa.id)) {
         pedidosNotificadosRef.current.add(mesa.id);
-        setTimeout(() => pedidosNotificadosRef.current.delete(mesa.id), 10_000);
+        setTimeout(() => pedidosNotificadosRef.current.delete(mesa.id), 2_000);
         audioManager.play("ding");
         vibrar([200, 100, 200]);
         notify.pedido("¡Nuevo pedido!", mesa.nombre);
@@ -149,7 +149,7 @@ useEffect(() => {
 
           if (!pedidosNotificadosRef.current.has(dedupeKey)) {
             pedidosNotificadosRef.current.add(dedupeKey);
-            setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
+            setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 2_000);
             audioManager.play("ding");
             vibrar([200, 100, 200]);
             notify.pedido("¡Nuevo pedido!", mesaNombre);
