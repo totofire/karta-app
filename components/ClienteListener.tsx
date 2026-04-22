@@ -10,41 +10,41 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
   const router = useRouter();
 
   useEffect(() => {
-    console.log(`[RT] Conectando broadcast sesion-${sesionId}...`);
+    console.log(`[RT] Conectando postgres_changes cliente sesion-${sesionId}...`);
 
-    const channel = supabase
-      .channel(`sesion-${sesionId}`)
-      .on('broadcast', { event: 'pedido:update' }, (msg) => {
-        const data = msg.payload as Record<string, any>;
-        const estado = data?.estado as string | undefined;
-        console.log('[RT] 📥 cliente pedido:update', data);
+    const canal = supabase
+      .channel(`cliente-${sesionId}`)
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pedido", filter: `sesionId=eq.${sesionId}` },
+        (payload) => {
+          const nuevo  = payload.new as Record<string, any>;
+          const estado = nuevo.estado as string;
+          console.log('[RT] 📥 cliente pedido UPDATE', nuevo);
 
-        if (estado === 'CANCELADO') {
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate([100, 50, 100, 50, 100]);
+          if (estado === 'CANCELADO') {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate([100, 50, 100, 50, 100]);
+            }
+            mostrarAlertaCancelacion();
+            router.refresh();
           }
-          mostrarAlertaCancelacion();
-          router.refresh();
-        }
 
-        if (estado === 'ENTREGADO') {
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate([200, 100, 200]);
+          if (estado === 'ENTREGADO') {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate([200, 100, 200]);
+            }
+            mostrarAlertaExito();
+            router.refresh();
           }
-          mostrarAlertaExito();
-          router.refresh();
         }
-
-        if (estado === 'CERRADA') {
-          router.refresh();
-        }
-      })
-      .on('broadcast', { event: 'pedido:insert' }, () => {
-        router.refresh();
-      })
+      )
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "pedido", filter: `sesionId=eq.${sesionId}` },
+        () => { router.refresh(); }
+      )
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`[RT] ✅ sesion-${sesionId} activo`);
+          console.log(`[RT] ✅ cliente sesion-${sesionId} activo`);
         }
         if (status === 'CHANNEL_ERROR') {
           console.error('[RT] ❌ cliente-sesion error:', err);
@@ -54,9 +54,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
         }
       });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(canal); };
   }, [sesionId, router]);
 
   const mostrarAlertaCancelacion = () => {

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
 import { obtenerReglasActivas, calcularDescuentoSesion } from "@/lib/descuentos";
-import { broadcastSesion, broadcastMesa, broadcastPedido, broadcastCliente } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   const localId = await getLocalId();
@@ -90,11 +89,6 @@ export async function POST(req: Request) {
 
       return { total: totalFinal, fecha: sesionCerrada.fechaFin };
     });
-
-    await broadcastSesion(localId, "update", { sesionId, cerrada: true });
-    await broadcastPedido(localId, "update", { sesionId, estado: "ENTREGADO" });
-    await broadcastMesa(localId, "update", { sesionId });
-    await broadcastCliente(sesionId, "update", { estado: "CERRADA" });
 
     return NextResponse.json({
       success: true,

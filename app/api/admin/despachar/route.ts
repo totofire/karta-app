@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
-import { broadcastPedido } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   const localId = await getLocalId();
@@ -48,13 +47,11 @@ export async function POST(req: Request) {
           fechaDespacho: new Date(),
         },
       });
-      await broadcastPedido(localId, "update", { pedidoId: Number(pedidoId), estado: "ENTREGADO" });
     } else {
       await prisma.pedido.update({
         where: { id: Number(pedidoId) },
         data:  { estado: "EN_PREPARACION" },
       });
-      await broadcastPedido(localId, "update", { pedidoId: Number(pedidoId), estado: "EN_PREPARACION" });
     }
 
     return NextResponse.json({ success: true });

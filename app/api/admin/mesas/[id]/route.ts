@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
-import { broadcastMesa } from "@/lib/broadcast";
 
 export async function PATCH(
   request: Request,
@@ -48,8 +47,6 @@ export async function PATCH(
       }
     });
 
-    await broadcastMesa(localId, "update", { mesaId: actualizada.id });
-
     return NextResponse.json(actualizada);
   } catch (error) {
     return NextResponse.json({ error: "Error actualizando mesa" }, { status: 500 });
@@ -72,8 +69,6 @@ export async function DELETE(
     });
     
     if (count.count === 0) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
-
-    await broadcastMesa(localId, "delete", { mesaId: Number(id) });
 
     return NextResponse.json({ success: true });
   } catch (error) {

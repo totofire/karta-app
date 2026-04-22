@@ -126,87 +126,85 @@ useEffect(() => {
   prevMesasRef.current = mesas;
 }, [mesas]);
 
-  // ── CANAL BROADCAST (reemplaza postgres_changes) ───────────────────────────
+  // ── CANAL REALTIME (postgres_changes) ─────────────────────────────────────
   useEffect(() => {
     if (!localId) return;
 
-    console.log(`[RT] Conectando broadcast local-${localId}...`);
+    console.log(`[RT] Conectando postgres_changes local-${localId}...`);
 
     const canal = supabase
-      .channel(`local-${localId}`)
-      .on("broadcast", { event: "pedido:insert" }, (msg) => {
-        const data = msg.payload as Record<string, any>;
-        console.log("[RT] 📥 pedido:insert", data);
+      .channel(`admin-${localId}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        (payload) => {
+          const nuevo = payload.new as Record<string, any>;
+          console.log("[RT] 📥 pedido INSERT", nuevo);
 
-        const sesionId = data?.sesionId as number | undefined;
-        const mesa = sesionId
-          ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
-          : undefined;
-        const mesaNombre = mesa?.nombre ?? "nueva";
+          const sesionId = nuevo.sesionId as number | undefined;
+          const mesa = sesionId
+            ? mesasRef.current.find((m: any) => m.sesionId === sesionId)
+            : undefined;
+          const mesaNombre = mesa?.nombre ?? "nueva";
+          const dedupeKey  = mesa?.id ?? sesionId ?? 0;
 
-        const dedupeKey = mesa?.id ?? sesionId ?? 0;
-        if (!pedidosNotificadosRef.current.has(dedupeKey)) {
-          pedidosNotificadosRef.current.add(dedupeKey);
-          setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
-          audioManager.play("ding");
-          navigator.vibrate?.([200, 100, 200]);
-          notify.pedido("¡Nuevo pedido!", mesaNombre);
-        }
-        notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
-
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
-      .on("broadcast", { event: "pedido:update" }, (msg) => {
-        console.log("[RT] 📥 pedido:update", msg.payload);
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
-      .on("broadcast", { event: "pedido:delete" }, () => {
-        mutateRef.current();
-        mutateCocinaRef.current();
-        mutateBarraRef.current();
-      })
-      .on("broadcast", { event: "sesion:insert" }, () => {
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "sesion:update" }, (msg) => {
-        const data = msg.payload as Record<string, any>;
-        console.log("[RT] 📥 sesion:update", data);
-
-        if (data?.solicitaCuenta) {
-          const mesaId = data.mesaId as number | undefined;
-          if (mesaId && !cuentasNotificadasRef.current.has(mesaId)) {
-            cuentasNotificadasRef.current.add(mesaId);
-            setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15_000);
-            const mesaNombre =
-              mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
-            audioManager.play("caja");
-            navigator.vibrate?.([300, 100, 300]);
-            notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
-            notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
+          if (!pedidosNotificadosRef.current.has(dedupeKey)) {
+            pedidosNotificadosRef.current.add(dedupeKey);
+            setTimeout(() => pedidosNotificadosRef.current.delete(dedupeKey), 10_000);
+            audioManager.play("ding");
+            navigator.vibrate?.([200, 100, 200]);
+            notify.pedido("¡Nuevo pedido!", mesaNombre);
           }
+          notificarNativo("🍽️ Nuevo pedido", `Mesa ${mesaNombre}`, "pedido-nuevo");
+
+          mutateRef.current();
+          mutateCocinaRef.current();
+          mutateBarraRef.current();
         }
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "sesion:delete" }, () => {
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "mesa:insert" }, () => {
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "mesa:update" }, () => {
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "mesa:delete" }, () => {
-        mutateRef.current();
-      })
-      .on("broadcast", { event: "config:update" }, () => {
-        // Recargar datos de servicio (cajaAbierta, etc)
-        mutateRef.current();
-      })
+      )
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        () => {
+          mutateRef.current();
+          mutateCocinaRef.current();
+          mutateBarraRef.current();
+        }
+      )
+      .on("postgres_changes",
+        { event: "DELETE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        () => {
+          mutateRef.current();
+          mutateCocinaRef.current();
+          mutateBarraRef.current();
+        }
+      )
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
+        (payload) => {
+          if (payload.eventType === "UPDATE") {
+            const nuevo = payload.new as Record<string, any>;
+            const viejo = payload.old as Record<string, any>;
+            // Detectar nueva solicitud de cuenta (null → Date)
+            if (nuevo.solicitaCuenta && !viejo.solicitaCuenta) {
+              const mesaId = nuevo.mesaId as number | undefined;
+              if (mesaId && !cuentasNotificadasRef.current.has(mesaId)) {
+                cuentasNotificadasRef.current.add(mesaId);
+                setTimeout(() => cuentasNotificadasRef.current.delete(mesaId), 15_000);
+                const mesaNombre =
+                  mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${mesaId}`;
+                audioManager.play("caja");
+                navigator.vibrate?.([300, 100, 300]);
+                notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
+                notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
+              }
+            }
+          }
+          mutateRef.current();
+        }
+      )
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "Mesa", filter: `localId=eq.${localId}` },
+        () => { mutateRef.current(); }
+      )
       .subscribe((status, err) => {
         console.log(`[RT] local-${localId} status: ${status}`, err || "");
         if (status === "SUBSCRIBED") {

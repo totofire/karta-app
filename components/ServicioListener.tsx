@@ -9,14 +9,17 @@ export default function ServicioListener({ localId }: { localId: number }) {
   useEffect(() => { routerRef.current = router; }, [router]);
 
   useEffect(() => {
-    console.log(`[RT] Conectando broadcast servicio local-${localId}...`);
+    console.log(`[RT] Conectando postgres_changes servicio local-${localId}...`);
 
     const canal = supabase
-      .channel(`local-${localId}-servicio`)
-      .on("broadcast", { event: "config:update" }, () => {
-        console.log("[RT] 📥 config:update — refrescando");
-        routerRef.current.refresh();
-      })
+      .channel(`servicio-${localId}`)
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Configuracion", filter: `localId=eq.${localId}` },
+        () => {
+          console.log("[RT] 📥 Configuracion UPDATE — refrescando");
+          routerRef.current.refresh();
+        }
+      )
       .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
           console.log(`[RT] ✅ servicio local-${localId} activo`);

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { broadcastSesion } from "@/lib/broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +35,6 @@ export async function POST(request: Request) {
     select: { id: true, localId: true, mesaId: true },
   });
 
-  await broadcastSesion(sesionActualizada.localId, "update", {
-    sesionId: sesionActualizada.id,
-    mesaId: sesionActualizada.mesaId,
-    llamadaMozo: motivo,
-  });
-
   return NextResponse.json({ ok: true });
 }
 
@@ -72,12 +65,6 @@ export async function DELETE(request: Request) {
     where: { id: sesion.id },
     data: { llamadaMozo: null },
     select: { id: true, localId: true, mesaId: true },
-  });
-
-  await broadcastSesion(sesionLimpia.localId, "update", {
-    sesionId: sesionLimpia.id,
-    mesaId: sesionLimpia.mesaId,
-    llamadaMozo: null,
   });
 
   return NextResponse.json({ ok: true });

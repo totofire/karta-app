@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { obtenerReglasActivas, aplicarReglasAItems } from "@/lib/descuentos";
-import { broadcastPedido, broadcastCliente } from "@/lib/broadcast";
 
 interface ProductoRequest {
   productoId: number;
@@ -114,9 +113,6 @@ export async function POST(request: Request) {
       }),
       ...operacionesStock,
     ]);
-
-    await broadcastPedido(localIdDelBar, "insert", { pedidoId: nuevoPedido.id, sesionId: sesion.id, nombreCliente: nombreFinal });
-    await broadcastCliente(sesion.id, "insert", { pedidoId: nuevoPedido.id });
 
     return NextResponse.json({ success: true, pedidoId: nuevoPedido.id });
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
-import { broadcastConfig } from "@/lib/broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +37,6 @@ export async function PATCH(request: Request) {
     update: data,
     create: { localId, ...data },
   });
-
-  await broadcastConfig(localId);
 
   return NextResponse.json(config);
 }

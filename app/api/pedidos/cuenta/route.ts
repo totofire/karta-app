@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { broadcastSesion } from "@/lib/broadcast";
 
 const METODOS_VALIDOS = ["QR", "TARJETA", "EFECTIVO"] as const;
 type MetodoPago = typeof METODOS_VALIDOS[number];
@@ -24,13 +23,6 @@ export async function POST(req: Request) {
         metodoPago,
       },
       select: { id: true, localId: true, mesaId: true },
-    });
-
-    await broadcastSesion(sesionActualizada.localId, "update", {
-      sesionId: sesionActualizada.id,
-      mesaId: sesionActualizada.mesaId,
-      solicitaCuenta: true,
-      metodoPago,
     });
 
     return NextResponse.json({ success: true });

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { broadcastSesion, broadcastCliente } from "@/lib/broadcast";
 
 export async function POST(req: Request) {
   try {
@@ -35,9 +34,6 @@ export async function POST(req: Request) {
       data:  { fechaFin: new Date() },
       select: { id: true, localId: true, mesaId: true },
     });
-
-    await broadcastSesion(sesion.localId, "update", { sesionId: sesion.id, mesaId: sesion.mesaId, cerrada: true });
-    await broadcastCliente(sesionId, "update", { estado: "CERRADA" });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

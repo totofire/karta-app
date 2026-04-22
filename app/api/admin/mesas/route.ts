@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLocalId } from "@/lib/auth";
-import { broadcastMesa } from "@/lib/broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +78,6 @@ export async function POST(req: Request) {
       const creadas    = resultados.filter((r) => r.status === "ok").length;
       const fallidas   = resultados.filter((r) => r.status === "error").map((r) => r.nombre);
 
-      if (creadas > 0) await broadcastMesa(localId, "insert");
 
       return NextResponse.json({ success: true, creadas, fallidas });
     }
@@ -111,8 +109,6 @@ export async function POST(req: Request) {
           localId,
         },
       });
-
-      await broadcastMesa(localId, "insert", { mesaId: nueva.id });
 
       return NextResponse.json(nueva);
     }
