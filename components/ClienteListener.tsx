@@ -15,7 +15,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
     const canal = supabase
       .channel(`cliente-${sesionId}`)
       .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pedido", filter: `sesionId=eq.${sesionId}` },
+        { event: "UPDATE", schema: "public", table: "Pedido", filter: `sesionId=eq.${sesionId}` },
         (payload) => {
           const nuevo  = payload.new as Record<string, any>;
           const estado = nuevo.estado as string;
@@ -39,7 +39,7 @@ export default function ClienteListener({ sesionId }: { sesionId: number }) {
         }
       )
       .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedido", filter: `sesionId=eq.${sesionId}` },
+        { event: "INSERT", schema: "public", table: "Pedido", filter: `sesionId=eq.${sesionId}` },
         () => { router.refresh(); }
       )
       .subscribe((status, err) => {

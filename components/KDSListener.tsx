@@ -41,7 +41,7 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
     const canal = supabase
       .channel(`kds-${sector}-${localId}`)
       .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "UPDATE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         (payload) => {
           const nuevo     = payload.new as Record<string, any>;
           const viejo     = payload.old as Record<string, any>;
@@ -105,11 +105,11 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
         }
       )
       .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "INSERT", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => { mutateRef.current(); }
       )
       .on("postgres_changes",
-        { event: "DELETE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "DELETE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => { mutateRef.current(); }
       )
       .subscribe((status, err) => {

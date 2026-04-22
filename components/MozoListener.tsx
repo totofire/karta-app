@@ -47,7 +47,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
       /* ── 1. NUEVO PEDIDO ─────────────────────────────────── */
       .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "INSERT", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         (payload) => {
           const nuevo = payload.new as Record<string, any>;
           const pedidoId = nuevo.id as number;
@@ -68,7 +68,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
       /* ── 2. PEDIDO ACTUALIZADO (entregado / cancelado) ───── */
       .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "UPDATE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         async (payload) => {
           const nuevo = payload.new as Record<string, any>;
           console.log("[RT] 📥 mozo pedido UPDATE", nuevo);
@@ -100,7 +100,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
       /* ── 3. PEDIDO ELIMINADO ─────────────────────────────── */
       .on("postgres_changes",
-        { event: "DELETE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "DELETE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => { onUpdateRef.current(); }
       )
 
@@ -112,7 +112,7 @@ export default function MozoListener({ localId, mesasRef, onUpdate, onPedidoList
 
       /* ── 5. CAMBIOS DE SESIÓN (cuenta / llamado) ─────────── */
       .on("postgres_changes",
-        { event: "*", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
+        { event: "*", schema: "public", table: "Sesion", filter: `localId=eq.${localId}` },
         (payload) => {
           onUpdateRef.current();
           if (payload.eventType !== "UPDATE") return;

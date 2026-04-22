@@ -135,7 +135,7 @@ useEffect(() => {
     const canal = supabase
       .channel(`admin-${localId}`)
       .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "INSERT", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         (payload) => {
           const nuevo = payload.new as Record<string, any>;
           console.log("[RT] 📥 pedido INSERT", nuevo);
@@ -162,7 +162,7 @@ useEffect(() => {
         }
       )
       .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "UPDATE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => {
           mutateRef.current();
           mutateCocinaRef.current();
@@ -170,7 +170,7 @@ useEffect(() => {
         }
       )
       .on("postgres_changes",
-        { event: "DELETE", schema: "public", table: "pedido", filter: `localId=eq.${localId}` },
+        { event: "DELETE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => {
           mutateRef.current();
           mutateCocinaRef.current();
@@ -178,7 +178,7 @@ useEffect(() => {
         }
       )
       .on("postgres_changes",
-        { event: "*", schema: "public", table: "sesion", filter: `localId=eq.${localId}` },
+        { event: "*", schema: "public", table: "Sesion", filter: `localId=eq.${localId}` },
         (payload) => {
           if (payload.eventType === "UPDATE") {
             const nuevo = payload.new as Record<string, any>;

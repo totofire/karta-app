@@ -215,7 +215,6 @@ model Sesion {
 
   pedidos        Pedido[]
 
-  @@map("sesion")
   @@index([localId, fechaFin])
   @@index([mesaId, fechaFin])
 }
@@ -238,7 +237,6 @@ model Pedido {
 
   items         ItemPedido[]
 
-  @@map("pedido")
   @@index([localId, estado])
   @@index([sesionId])
 }
