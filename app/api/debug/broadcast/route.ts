@@ -38,10 +38,8 @@ export async function GET() {
         topic: `realtime:${channel}`,
         event: "broadcast",
         payload: {
-          type: "broadcast",
           event: "pedido:insert",
-          test: true,
-          timestamp: Date.now(),
+          payload: { test: true, timestamp: Date.now() },
         },
       },
     ],

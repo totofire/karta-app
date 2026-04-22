@@ -35,7 +35,7 @@ export async function broadcast({ channel, event, payload = {} }: BroadcastEvent
       {
         topic: `realtime:${channel}`,
         event: "broadcast",
-        payload: { type: "broadcast", event, ...payload },
+        payload: { event, payload },
       },
     ],
   };
