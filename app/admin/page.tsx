@@ -19,7 +19,16 @@ import {
   PenTool,
   MapPin,
   Move,
+  BellRing,
 } from "lucide-react";
+
+const MOTIVO_LABEL: Record<string, string> = {
+  SERVILLETAS: "Servilletas",
+  ADEREZOS: "Aderezos / condimentos",
+  CUBIERTOS: "Cubiertos / utensilios",
+  CONSULTA: "Tiene una consulta",
+  OTRO: "Necesita atención",
+};
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
@@ -607,9 +616,11 @@ export default function AdminDashboard() {
                 className={`relative p-5 rounded-2xl border transition-all duration-300 ${
                   mesa.solicitaCuenta
                     ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
-                    : mesa.estado === "OCUPADA"
-                      ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                      : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+                    : mesa.llamadaMozo
+                      ? "bg-orange-50 border-orange-300 shadow-xl shadow-orange-100 ring-2 ring-orange-300 ring-offset-2"
+                      : mesa.estado === "OCUPADA"
+                        ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
+                        : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
                 }`}
               >
                 <div className="flex justify-between items-start mb-4">
@@ -631,6 +642,12 @@ export default function AdminDashboard() {
                 {mesa.solicitaCuenta && (
                   <div className="bg-yellow-400 text-yellow-900 px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-bounce shadow-sm">
                     <HandCoins size={14} /> ¡PIDE CUENTA!
+                  </div>
+                )}
+
+                {mesa.llamadaMozo && !mesa.solicitaCuenta && (
+                  <div className="bg-orange-500 text-white px-3 py-2 rounded-lg font-black text-xs uppercase tracking-wide mb-4 flex items-center gap-2 justify-center animate-pulse shadow-sm">
+                    <BellRing size={14} /> {MOTIVO_LABEL[mesa.llamadaMozo] ?? "Necesita atención"}
                   </div>
                 )}
 

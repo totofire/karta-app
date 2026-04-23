@@ -66,6 +66,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const prevMesasRef        = useRef<any[]>([]);
   const cuentasNotificadasRef = useRef<Set<number>>(new Set());
   const pedidosNotificadosRef = useRef<Set<number>>(new Set());
+  const llamadosNotificadosRef = useRef<Set<number>>(new Set());
+
+  const MOTIVO_LABEL: Record<string, string> = {
+    SERVILLETAS: "Servilletas",
+    ADEREZOS: "Aderezos / condimentos",
+    CUBIERTOS: "Cubiertos / utensilios",
+    CONSULTA: "Tiene una consulta",
+    OTRO: "Necesita atención",
+  };
   const inicializado        = useRef(false);
 
   useEffect(() => { mutateRef.current       = mutateMesas;  }, [mutateMesas]);
@@ -183,6 +192,7 @@ useEffect(() => {
           if (payload.eventType === "UPDATE") {
             const nuevo = payload.new as Record<string, any>;
             const viejo = payload.old as Record<string, any>;
+
             // Detectar nueva solicitud de cuenta (null → Date)
             if (nuevo.solicitaCuenta && !viejo.solicitaCuenta) {
               const mesaId = nuevo.mesaId as number | undefined;
@@ -195,6 +205,25 @@ useEffect(() => {
                 vibrar([300, 100, 300]);
                 notify.atencion("¡Piden la cuenta!", `Mesa ${mesaNombre}`);
                 notificarNativo("🧾 ¡Piden la cuenta!", `Mesa ${mesaNombre}`, `cuenta-${mesaId}`);
+              }
+            }
+
+            // Detectar nuevo llamado al mozo (null → motivo)
+            const llamadaMozo = nuevo.llamadaMozo as string | null;
+            const llamadaMozoAnterior = viejo.llamadaMozo as string | null;
+            if (llamadaMozo && llamadaMozo !== llamadaMozoAnterior) {
+              const mesaId = nuevo.mesaId as number | undefined;
+              const keyLlamado = mesaId ?? 0;
+              if (!llamadosNotificadosRef.current.has(keyLlamado)) {
+                llamadosNotificadosRef.current.add(keyLlamado);
+                setTimeout(() => llamadosNotificadosRef.current.delete(keyLlamado), 15_000);
+                const mesaNombre =
+                  mesasRef.current.find((m: any) => m.id === mesaId)?.nombre ?? `#${keyLlamado}`;
+                const motivoTexto = MOTIVO_LABEL[llamadaMozo] ?? "Necesita atención";
+                audioManager.play("ding");
+                vibrar([200, 100, 200]);
+                notify.atencion("¡Te llaman!", `Mesa ${mesaNombre} — ${motivoTexto}`);
+                notificarNativo("🔔 ¡Te llaman!", `Mesa ${mesaNombre} — ${motivoTexto}`, `llamado-${keyLlamado}`);
               }
             }
           }

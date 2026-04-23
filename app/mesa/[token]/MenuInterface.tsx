@@ -13,6 +13,7 @@ import {
   descuentoParaProducto,
   reglasGlobalesActivas,
 } from "@/lib/descuentos-utils";
+import { supabase } from "@/lib/supabase";
 
 interface ItemCarrito {
   id: string;
@@ -44,11 +45,35 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   // ── Llamar al mozo ────────────────────────────────────────────────────────
   const LLAMADO_KEY = `llamado-${tokenEfimero}`;
   const [verLlamadoSheet, setVerLlamadoSheet] = useState(false);
-  const [llamadoActivo, setLlamadoActivo] = useState<string | null>(() => {
-    if (typeof window !== "undefined") return localStorage.getItem(LLAMADO_KEY);
-    return null;
-  });
+  // Inicializar en null para evitar hydration mismatch (SSR no tiene localStorage)
+  const [llamadoActivo, setLlamadoActivo] = useState<string | null>(null);
   const [enviandoLlamado, setEnviandoLlamado] = useState(false);
+
+  // Leer localStorage solo después de montar (cliente)
+  useEffect(() => {
+    const stored = localStorage.getItem(LLAMADO_KEY);
+    if (stored) setLlamadoActivo(stored);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Detectar cuando el mozo marca el llamado como atendido (Sesion.llamadaMozo → null)
+  useEffect(() => {
+    const canal = supabase
+      .channel(`menu-llamado-${tokenEfimero}`)
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Sesion", filter: `tokenEfimero=eq.${tokenEfimero}` },
+        (payload) => {
+          const nuevo = payload.new as Record<string, any>;
+          if (!nuevo.llamadaMozo) {
+            localStorage.removeItem(LLAMADO_KEY);
+            setLlamadoActivo(null);
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenEfimero]);
 
   const MOTIVOS = [
     { valor: "SERVILLETAS", label: "Servilletas",           icono: Sparkles },
