@@ -26,15 +26,30 @@ export async function POST(req: Request) {
     // Buscar la mesa filtrando por localId del usuario — previene cross-tenant
     const mesa = await prisma.mesa.findUnique({
       where: { id: mesaIdInt },
+      select: { id: true, localId: true, sesionActivaId: true },
     });
 
     if (!mesa || mesa.localId !== session.localId) {
       return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 });
     }
 
+    // Si esta mesa fue unida a otra sesión, devolver el token de la sesión principal
+    if (mesa.sesionActivaId !== null) {
+      const sesionPrincipal = await prisma.sesion.findFirst({
+        where: { id: mesa.sesionActivaId, localId: session.localId, fechaFin: null },
+        select: { tokenEfimero: true },
+      });
+      if (sesionPrincipal) {
+        return NextResponse.json({ token: sesionPrincipal.tokenEfimero, merged: true });
+      }
+      // La sesión principal ya cerró: limpiar el puntero colgado
+      await prisma.mesa.update({ where: { id: mesaIdInt }, data: { sesionActivaId: null } });
+    }
+
     const sesionExistente = await prisma.sesion.findFirst({
       where: { mesaId: mesaIdInt, localId: session.localId, fechaFin: null },
       orderBy: { fechaInicio: "desc" },
+      select: { tokenEfimero: true },
     });
 
     if (sesionExistente) {
