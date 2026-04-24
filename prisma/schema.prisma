@@ -34,6 +34,12 @@ enum Plan {
   ENTERPRISE  // Plan full
 }
 
+enum EstadoSesion {
+  ACTIVA   // Sesión en curso, mesa ocupada
+  CERRADA  // Cobrada y cerrada normalmente
+  MERGED   // Absorbida por otra sesión al unir mesas; ver Mesa.sesionActivaId
+}
+
 // --------------------------------------
 // 2. LOCAL Y USUARIOS
 // --------------------------------------
@@ -73,6 +79,7 @@ model Local {
   reglasDescuento ReglaDescuento[]
   reservas        Reserva[]
   turnos          Turno[]
+  mergeLogs       MergeMesaLog[]
 }
 
 model Usuario {
@@ -137,8 +144,15 @@ model Mesa {
   localId  Int
   local    Local   @relation(fields: [localId], references: [id])
 
-  sesiones Sesion[]
+  sesiones Sesion[]  @relation("HistorialSesiones")
   reservas Reserva[]
+
+  /// FK hacia la Sesion en la que esta mesa fue incluida via merge.
+  /// Convive con la relación `sesiones` (historial de sesiones propias de esta mesa).
+  /// Cuando != null, esta mesa es subordinada: la sesión activa real es `sesionActiva`,
+  /// no la última entrada de `sesiones`. Limpiar a null al cerrar o separar.
+  sesionActivaId Int?
+  sesionActiva   Sesion? @relation("MesaEnSesion", fields: [sesionActivaId], references: [id])
 
   @@index([localId, activo])
 }
@@ -190,7 +204,7 @@ model Sesion {
   id             Int       @id @default(autoincrement())
 
   mesaId         Int
-  mesa           Mesa      @relation(fields: [mesaId], references: [id])
+  mesa           Mesa      @relation("HistorialSesiones", fields: [mesaId], references: [id])
 
   localId        Int
   local          Local     @relation(fields: [localId], references: [id])
@@ -210,14 +224,21 @@ model Sesion {
   mpPaymentId    String?   // ID del pago confirmado en MP
   pagadoEn       DateTime? // Timestamp de confirmación del pago
 
-  descuentoTotal Float     @default(0)
-  propina        Float     @default(0)   // propina voluntaria confirmada al cobrar
-  llamadaMozo    String?   // "SERVILLETAS" | "ADEREZOS" | "CUBIERTOS" | "CONSULTA" | "OTRO"
+  descuentoTotal Float        @default(0)
+  propina        Float        @default(0)   // propina voluntaria confirmada al cobrar
+  llamadaMozo    String?      // "SERVILLETAS" | "ADEREZOS" | "CUBIERTOS" | "CONSULTA" | "OTRO"
+
+  estado         EstadoSesion @default(ACTIVA)
+
+  // Mesas secundarias incorporadas via merge (relación inversa de Mesa.sesionActivaId)
+  mesasUnidas    Mesa[]       @relation("MesaEnSesion")
 
   pedidos        Pedido[]
+  mergeLogs      MergeMesaLog[]
 
   @@index([localId, fechaFin])
   @@index([mesaId, fechaFin])
+  @@index([localId, estado])
 }
 
 model Pedido {
@@ -335,4 +356,29 @@ model Reserva {
   creadoEn DateTime @default(now())
 
   @@index([localId, fecha])
+}
+
+// --------------------------------------
+// 9. AUDITORÍA DE MERGE DE MESAS
+// --------------------------------------
+
+model MergeMesaLog {
+  id              Int      @id @default(autoincrement())
+  accion          String   // "UNIR" | "SEPARAR"
+
+  mesaPrincipalId Int      // Mesa que absorbe (o fue principal al separar)
+  mesaUnidaId     Int      // Mesa que se une o se separa
+
+  ejecutadoPor    Int      // userId del mozo/admin que ejecutó la acción
+
+  sesionId        Int
+  sesion          Sesion   @relation(fields: [sesionId], references: [id])
+
+  localId         Int
+  local           Local    @relation(fields: [localId], references: [id])
+
+  creadoEn        DateTime @default(now())
+
+  @@index([localId, creadoEn])
+  @@index([sesionId])
 }
