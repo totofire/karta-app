@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth";
+import { getLocalId, requireAdmin } from "@/lib/auth";
 
 export async function GET() {
   const localId = await getLocalId();
@@ -17,8 +17,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const { nombre, orden, imprimirCocina } = await req.json();
 

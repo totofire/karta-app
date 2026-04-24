@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,8 +13,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   try {
     // Verificar que el mozo pertenece a mi local
@@ -85,8 +86,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   try {
     const count = await prisma.usuario.deleteMany({

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const config = await prisma.configuracion.findUnique({
     where: { localId },
@@ -17,8 +18,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const body = await request.json();
   const data: Record<string, unknown> = {};

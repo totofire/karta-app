@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 // Devuelve todos los mozos del local
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET() {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const usuarios = await prisma.usuario.findMany({
     where: { localId, rol: "MOZO" },
@@ -34,8 +35,9 @@ export async function GET() {
 // Body: { nombre, email, password }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   try {
     const { nombre, email, password } = await req.json();

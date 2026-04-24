@@ -211,6 +211,7 @@ model Sesion {
   pagadoEn       DateTime? // Timestamp de confirmación del pago
 
   descuentoTotal Float     @default(0)
+  propina        Float     @default(0)   // propina voluntaria confirmada al cobrar
   llamadaMozo    String?   // "SERVILLETAS" | "ADEREZOS" | "CUBIERTOS" | "CONSULTA" | "OTRO"
 
   pedidos        Pedido[]

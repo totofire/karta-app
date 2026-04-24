@@ -36,6 +36,11 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
   const [categoriaActiva, setCategoriaActiva] = useState(categorias[0]?.id || 0);
   const [pidiendoCuenta, setPidiendoCuenta] = useState(false);
 
+  // Propina
+  const [propinaPct, setPropinaPct] = useState<number>(0);
+  const [propinaCustom, setPropinaCustom] = useState("");
+  const [mostrarCustomPropina, setMostrarCustomPropina] = useState(false);
+
   // Modal producto
   const [modalProducto, setModalProducto] = useState<any>(null);
   const [cantidadModal, setCantidadModal] = useState(1);
@@ -136,6 +141,11 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
     return { itemsHistoricos: Array.from(mapa.values()), totalHistorico: total };
   }, [pedidosHistoricos]);
 
+  // ── PROPINA ───────────────────────────────────────────────────────────────
+  const propinaAmount = mostrarCustomPropina
+    ? Math.max(0, Number(propinaCustom) || 0)
+    : Math.round((totalHistorico * propinaPct) / 100);
+
   // ── SOLICITAR CUENTA ──────────────────────────────────────────────────────
   const pedirCuenta = async () => {
     if (!metodoPagoSeleccionado) return;
@@ -144,7 +154,7 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
       const res = await fetch("/api/pedidos/cuenta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado }),
+        body: JSON.stringify({ tokenEfimero, metodoPago: metodoPagoSeleccionado, propina: propinaAmount }),
       });
       if (!res.ok) { toast.error("Error al solicitar cuenta"); return; }
 
@@ -632,8 +642,58 @@ export default function MenuInterface({ mesa, categorias, tokenEfimero, pedidosH
               )}
             </div>
             <div className="px-5 py-3 border-t border-gray-100 flex justify-between items-baseline">
-              <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Total</span>
+              <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Subtotal</span>
               <span className="text-3xl font-black text-slate-900">${totalHistorico}</span>
+            </div>
+            <div className="px-5 pb-1">
+              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">¿Dejás propina?</p>
+              <div className="grid grid-cols-5 gap-1.5 mb-2">
+                {([0, 10, 15, 20] as const).map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => { setPropinaPct(pct); setMostrarCustomPropina(false); setPropinaCustom(""); }}
+                    className={`py-2.5 rounded-xl border-2 text-xs font-black transition-all active:scale-95 ${
+                      !mostrarCustomPropina && propinaPct === pct
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
+                    }`}
+                  >
+                    {pct === 0 ? "No" : `${pct}%`}
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setMostrarCustomPropina(true); setPropinaPct(0); }}
+                  className={`py-2.5 rounded-xl border-2 text-xs font-black transition-all active:scale-95 ${
+                    mostrarCustomPropina
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300"
+                  }`}
+                >
+                  $...
+                </button>
+              </div>
+              {mostrarCustomPropina && (
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Monto en $"
+                  value={propinaCustom}
+                  onChange={(e) => setPropinaCustom(e.target.value)}
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-bold mb-2 focus:outline-none focus:border-slate-900"
+                />
+              )}
+              {propinaAmount > 0 && (
+                <div className="flex justify-between items-baseline bg-green-50 rounded-xl px-3 py-2 mb-2">
+                  <span className="text-xs font-bold text-green-700">Propina</span>
+                  <span className="font-black text-green-700">+${propinaAmount}</span>
+                </div>
+              )}
+              {propinaAmount > 0 && (
+                <div className="flex justify-between items-baseline px-1 mb-1">
+                  <span className="text-sm font-black text-gray-700 uppercase tracking-wider">Total</span>
+                  <span className="text-2xl font-black text-slate-900">${totalHistorico + propinaAmount}</span>
+                </div>
+              )}
             </div>
             <div className="px-5 pb-5">
               <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">¿Cómo vas a pagar?</p>

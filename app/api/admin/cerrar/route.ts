@@ -8,7 +8,8 @@ export async function POST(req: Request) {
   if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {
-    const { sesionId } = await req.json();
+    const { sesionId, propina: propinaBody } = await req.json();
+    const propinaFinal = Math.max(0, Number(propinaBody) || 0);
 
     if (!sesionId) return NextResponse.json({ error: "Falta ID de sesión" }, { status: 400 });
 
@@ -45,7 +46,9 @@ export async function POST(req: Request) {
       // Aplicar descuentos globales de sesión (PORCENTAJE global, DESCUENTO_GLOBAL)
       const reglasActivas = await obtenerReglasActivas(localId);
       const descuentoSesion = calcularDescuentoSesion(totalBruto, reglasActivas);
-      const totalFinal = Math.max(0, totalBruto - descuentoSesion);
+      // Propina: usa la confirmada por el mozo; si no envió, usa la sugerida por el cliente
+      const propina = propinaFinal > 0 ? propinaFinal : (sesion.propina ?? 0);
+      const totalFinal = Math.max(0, totalBruto - descuentoSesion) + propina;
 
       // 3. LIMPIEZA DE "ZOMBIS" (Cocina/Barra)
       // Pasamos a ENTREGADO todo lo que haya quedado colgado (PENDIENTE/PREPARACION)
@@ -76,6 +79,7 @@ export async function POST(req: Request) {
           fechaFin: new Date(),
           totalVenta: totalFinal,
           descuentoTotal: descuentoSesion,
+          propina,
           solicitaCuenta: null,
         },
       });
@@ -87,7 +91,7 @@ export async function POST(req: Request) {
         data: { activo: true } 
       });
 
-      return { total: totalFinal, fecha: sesionCerrada.fechaFin };
+      return { total: totalFinal, propina, fecha: sesionCerrada.fechaFin };
     });
 
     return NextResponse.json({

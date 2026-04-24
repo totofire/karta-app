@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Sesion" ADD COLUMN     "propina" DOUBLE PRECISION NOT NULL DEFAULT 0;

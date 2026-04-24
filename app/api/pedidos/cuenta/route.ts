@@ -6,7 +6,7 @@ type MetodoPago = typeof METODOS_VALIDOS[number];
 
 export async function POST(req: Request) {
   try {
-    const { tokenEfimero, metodoPago } = await req.json();
+    const { tokenEfimero, metodoPago, propina } = await req.json();
 
     if (!tokenEfimero) {
       return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
@@ -16,11 +16,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Método de pago inválido" }, { status: 400 });
     }
 
+    const propinaFinal = Math.max(0, Number(propina) || 0);
+
     const sesionActualizada = await prisma.sesion.update({
       where: { tokenEfimero },
       data: {
         solicitaCuenta: new Date(),
         metodoPago,
+        propina: propinaFinal,
       },
       select: { id: true, localId: true, mesaId: true },
     });

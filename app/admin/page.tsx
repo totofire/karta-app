@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import useSWR from "swr";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -20,6 +20,10 @@ import {
   MapPin,
   Move,
   BellRing,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  Pencil,
 } from "lucide-react";
 
 const MOTIVO_LABEL: Record<string, string> = {
@@ -357,6 +361,8 @@ function MapCanvas({
 export default function AdminDashboard() {
   const [filtroSector, setFiltroSector] = useState("Todos");
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null);
+  const [splitN, setSplitN] = useState(1);
+  const [propinaOverride, setPropinaOverride] = useState<string>("");
   const [vistaMapa, setVistaMapa] = useState(false);
   const [zonasLayout, setZonasLayout] = useState<Record<string, ZonaRect>>({});
 
@@ -383,6 +389,12 @@ export default function AdminDashboard() {
       .catch(() => {});
   };
 
+  // Reset split/propina cuando cambia la mesa seleccionada
+  useEffect(() => {
+    setSplitN(1);
+    setPropinaOverride("");
+  }, [mesaParaCobrar?.sesionId]);
+
   // ── HELPERS ────────────────────────────────────────────────────────────────
 
   const colorDe = (nombre: string) => {
@@ -393,13 +405,18 @@ export default function AdminDashboard() {
   const imprimirTicketCierre = (mesa: any) => {
     const v = window.open("", "PRINT", "height=600,width=400");
     if (!v) return;
+    const propina = mesa.propina ?? 0;
+    const splitN = mesa.splitN ?? 1;
+    const porPersona = mesa.porPersona ?? null;
     v.document.write(`
       <html><head><title>Ticket ${mesa.nombre}</title>
       <style>
         body { font-family:'Courier New',monospace; padding:10px; width:300px; margin:0 auto; text-transform:uppercase; }
         .hdr { text-align:center; border-bottom:2px dashed #000; padding-bottom:10px; margin-bottom:10px; }
         .item { display:flex; justify-content:space-between; margin-bottom:5px; font-size:12px; }
+        .sub { display:flex; justify-content:space-between; font-size:12px; margin-top:4px; }
         .tot { border-top:2px dashed #000; padding-top:10px; margin-top:10px; display:flex; justify-content:space-between; font-weight:bold; font-size:16px; }
+        .split { border-top:2px dashed #000; padding-top:8px; margin-top:8px; text-align:center; font-size:14px; font-weight:bold; }
         .ftr { text-align:center; font-size:10px; margin-top:20px; }
       </style></head><body>
       <div class="hdr">
@@ -408,7 +425,9 @@ export default function AdminDashboard() {
         <div>${new Date().toLocaleString()}</div>
       </div>
       ${mesa.detalles?.map((d: any) => `<div class="item"><span>${d.cantidad} x ${d.producto}</span><span>$${d.subtotal}</span></div>`).join("") || '<div style="text-align:center">Detalle no disponible</div>'}
-      <div class="tot"><span>TOTAL A PAGAR</span><span>$${mesa.totalActual}</span></div>
+      ${propina > 0 ? `<div class="sub"><span>PROPINA</span><span>+$${propina}</span></div>` : ""}
+      <div class="tot"><span>TOTAL</span><span>$${mesa.totalActual}</span></div>
+      ${splitN > 1 && porPersona ? `<div class="split">÷ ${splitN} PERSONAS = $${porPersona} C/U</div>` : ""}
       <div class="ftr">NO VALIDO COMO FACTURA<br/>GRACIAS POR SU VISITA</div>
       </body></html>
     `);
@@ -420,12 +439,14 @@ export default function AdminDashboard() {
 
   const ejecutarCierre = async () => {
     if (!mesaParaCobrar) return;
+    const propinaCliente = mesaParaCobrar.propina ?? 0;
+    const propinaFinal = propinaOverride !== "" ? Math.max(0, Number(propinaOverride) || 0) : propinaCliente;
     const tid = toast.loading("Cerrando mesa...");
     try {
       const res = await fetch("/api/admin/cerrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sesionId: mesaParaCobrar.sesionId }),
+        body: JSON.stringify({ sesionId: mesaParaCobrar.sesionId, propina: propinaFinal }),
       });
       if (res.ok) {
         toast.success("Mesa cerrada 💰", { id: tid });
@@ -715,10 +736,19 @@ export default function AdminDashboard() {
           const metodo = mesaParaCobrar.metodoPago
             ? METODO_CONFIG[mesaParaCobrar.metodoPago]
             : null;
+          const propinaCliente = mesaParaCobrar.propina ?? 0;
+          const propinaFinal = propinaOverride !== ""
+            ? Math.max(0, Number(propinaOverride) || 0)
+            : propinaCliente;
+          const subtotal = mesaParaCobrar.totalActual ?? 0;
+          const totalConPropina = subtotal + propinaFinal;
+          const porPersona = splitN > 1 ? Math.ceil(totalConPropina / splitN) : null;
+
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div className="bg-red-600 p-6 text-white text-center relative">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="bg-red-600 p-6 text-white text-center relative shrink-0">
                   <button
                     onClick={() => setMesaParaCobrar(null)}
                     className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full active:scale-95"
@@ -732,24 +762,107 @@ export default function AdminDashboard() {
                     {mesaParaCobrar.sector || ""}
                   </p>
                 </div>
-                <div className="p-6 space-y-5">
-                  <div className="text-center">
-                    <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">
-                      Total a cobrar
-                    </span>
-                    <div className="text-5xl font-black text-gray-900 mt-1">
-                      ${mesaParaCobrar.totalActual}
+
+                <div className="p-6 space-y-4 overflow-y-auto">
+                  {/* Detalle de items */}
+                  {mesaParaCobrar.detalles?.length > 0 && (
+                    <div className="bg-gray-50 rounded-2xl p-4 max-h-32 overflow-y-auto space-y-2">
+                      {mesaParaCobrar.detalles.map((d: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600 font-medium">
+                            <span className="font-black text-gray-800">{d.cantidad}x</span>{" "}{d.producto}
+                          </span>
+                          <span className="font-bold text-gray-800">${d.subtotal}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Subtotal + propina + total */}
+                  <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500 font-medium">Subtotal</span>
+                      <span className="font-bold text-gray-800">${subtotal}</span>
+                    </div>
+
+                    {/* Propina */}
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                        Propina
+                        {propinaCliente > 0 && propinaOverride === "" && (
+                          <span className="text-[10px] bg-green-100 text-green-700 font-black px-1.5 py-0.5 rounded-full">
+                            cliente
+                          </span>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {propinaOverride !== "" ? (
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={propinaOverride}
+                            onChange={(e) => setPropinaOverride(e.target.value)}
+                            className="w-20 text-right border-2 border-slate-900 rounded-lg px-2 py-0.5 text-sm font-black focus:outline-none"
+                            autoFocus
+                          />
+                        ) : (
+                          <span className={`font-bold ${propinaFinal > 0 ? "text-green-700" : "text-gray-400"}`}>
+                            {propinaFinal > 0 ? `+$${propinaFinal}` : "—"}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setPropinaOverride(propinaOverride !== "" ? "" : String(propinaFinal))}
+                          className="p-1 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                          <Pencil size={12} className="text-gray-400" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-2 flex justify-between items-baseline">
+                      <span className="text-xs font-black text-gray-500 uppercase tracking-widest">Total</span>
+                      <span className="text-3xl font-black text-gray-900">${totalConPropina}</span>
                     </div>
                   </div>
+
+                  {/* División de cuenta */}
+                  <div className="bg-blue-50 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-black text-blue-700 uppercase tracking-widest flex items-center gap-1.5">
+                        <Users size={13} /> Dividir cuenta
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSplitN(Math.max(1, splitN - 1))}
+                          className="w-8 h-8 rounded-full bg-white border-2 border-blue-200 flex items-center justify-center font-black text-blue-700 hover:bg-blue-100 active:scale-95 transition-all"
+                        >
+                          <ChevronDown size={16} />
+                        </button>
+                        <span className="w-8 text-center font-black text-lg text-blue-900">{splitN}</span>
+                        <button
+                          onClick={() => setSplitN(Math.min(20, splitN + 1))}
+                          className="w-8 h-8 rounded-full bg-white border-2 border-blue-200 flex items-center justify-center font-black text-blue-700 hover:bg-blue-100 active:scale-95 transition-all"
+                        >
+                          <ChevronUp size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {porPersona ? (
+                      <div className="text-center">
+                        <span className="text-3xl font-black text-blue-900">${porPersona}</span>
+                        <span className="text-blue-600 font-bold text-sm ml-1">por persona</span>
+                      </div>
+                    ) : (
+                      <p className="text-center text-xs text-blue-400 font-medium">Pago único — subí para dividir</p>
+                    )}
+                  </div>
+
+                  {/* Método de pago */}
                   {metodo ? (
-                    <div
-                      className={`flex items-center gap-3 py-3 px-4 rounded-2xl border-2 font-black text-sm ${metodo.bg} ${metodo.border} ${metodo.text}`}
-                    >
+                    <div className={`flex items-center gap-3 py-3 px-4 rounded-2xl border-2 font-black text-sm ${metodo.bg} ${metodo.border} ${metodo.text}`}>
                       <span className="text-2xl">{metodo.emoji}</span>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-0.5">
-                          Método elegido
-                        </p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-0.5">Método elegido</p>
                         {metodo.label}
                       </div>
                     </div>
@@ -758,54 +871,27 @@ export default function AdminDashboard() {
                       <HandCoins size={16} /> Método de pago no seleccionado aún
                     </div>
                   )}
-                  {mesaParaCobrar.detalles?.length > 0 && (
-                    <div className="bg-gray-50 rounded-2xl p-4 max-h-40 overflow-y-auto space-y-2">
-                      {mesaParaCobrar.detalles.map((d: any, i: number) => (
-                        <div
-                          key={i}
-                          className="flex justify-between items-center text-sm"
-                        >
-                          <span className="text-gray-600 font-medium">
-                            <span className="font-black text-gray-800">
-                              {d.cantidad}x
-                            </span>{" "}
-                            {d.producto}
-                          </span>
-                          <span className="font-bold text-gray-800">
-                            ${d.subtotal}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+
+                  {/* Acciones */}
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      onClick={() => imprimirTicketCierre(mesaParaCobrar)}
+                      onClick={() => imprimirTicketCierre({ ...mesaParaCobrar, totalActual: totalConPropina, propina: propinaFinal, splitN, porPersona })}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-all group active:scale-95"
                     >
-                      <Printer
-                        size={28}
-                        className="text-gray-400 group-hover:text-gray-600"
-                      />
-                      <span className="font-bold text-gray-600 text-xs">
-                        Imprimir Ticket
-                      </span>
+                      <Printer size={28} className="text-gray-400 group-hover:text-gray-600" />
+                      <span className="font-bold text-gray-600 text-xs">Imprimir Ticket</span>
                     </button>
                     <button
                       onClick={ejecutarCierre}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-green-50 border-2 border-green-100 hover:bg-green-100 hover:border-green-200 transition-all group active:scale-95"
                     >
-                      <CheckCircle2
-                        size={28}
-                        className="text-green-600 group-hover:scale-110 transition-transform"
-                      />
-                      <span className="font-bold text-green-700 text-xs">
-                        Cerrar y Liberar
-                      </span>
+                      <CheckCircle2 size={28} className="text-green-600 group-hover:scale-110 transition-transform" />
+                      <span className="font-bold text-green-700 text-xs">Cerrar y Liberar</span>
                     </button>
                   </div>
                 </div>
-                <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium border-t border-gray-100">
+
+                <div className="bg-gray-50 p-4 text-center text-xs text-gray-400 font-medium border-t border-gray-100 shrink-0">
                   Al cerrar, la mesa quedará disponible para nuevos clientes.
                 </div>
               </div>

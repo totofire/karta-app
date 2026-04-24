@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLocalId } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/admin/sectores/layout
 // Devuelve el JSON de posiciones de zonas guardado en Configuracion
 export async function GET() {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const config = await prisma.configuracion.findUnique({
     where: { localId },
@@ -22,8 +23,9 @@ export async function GET() {
 // POST /api/admin/sectores/layout
 // Body: { zonas: { [sectorNombre]: { x, y, w, h } } }
 export async function POST(req: Request) {
-  const localId = await getLocalId();
-  if (!localId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { localId } = admin;
 
   const { zonas } = await req.json();
 

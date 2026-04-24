@@ -40,6 +40,16 @@ export async function getLocalId(): Promise<number | null> {
   return session?.localId ?? null;
 }
 
+// Helper para rutas que requieren ADMIN o SUPER_ADMIN
+// Devuelve la sesión con localId garantizado, o null si no autorizado
+export async function requireAdmin(): Promise<{ userId: number; localId: number; rol: string } | null> {
+  const session = await getSession();
+  if (!session || !session.localId || !["ADMIN", "SUPER_ADMIN"].includes(session.rol)) {
+    return null;
+  }
+  return { userId: session.userId, localId: session.localId, rol: session.rol };
+}
+
 // Helper para rutas que requieren SUPER_ADMIN
 export async function getSuperAdmin(): Promise<Session | null> {
   const session = await getSession();

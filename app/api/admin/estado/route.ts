@@ -35,6 +35,7 @@ export async function GET() {
             solicitaCuenta: true,
             metodoPago: true,
             llamadaMozo: true,
+            propina: true,
             pedidos: {
               where: { estado: { not: "CANCELADO" } },
               orderBy: { fecha: "desc" },
@@ -117,6 +118,7 @@ export async function GET() {
           solicitaCuenta: sesionActiva.solicitaCuenta,
           metodoPago: sesionActiva.metodoPago ?? null,
           llamadaMozo: sesionActiva.llamadaMozo ?? null,
+          propina: sesionActiva.propina ?? 0,
         };
       }
 
