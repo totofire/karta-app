@@ -24,6 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
+  Link2,
+  Link2Off,
 } from "lucide-react";
 
 const MOTIVO_LABEL: Record<string, string> = {
@@ -363,6 +365,10 @@ export default function AdminDashboard() {
   const [mesaParaCobrar, setMesaParaCobrar] = useState<any>(null);
   const [splitN, setSplitN] = useState(1);
   const [propinaOverride, setPropinaOverride] = useState<string>("");
+  const [mesaParaUnir, setMesaParaUnir] = useState<any>(null);
+  const [mesaBId, setMesaBId] = useState<number | null>(null);
+  const [mergePreview, setMergePreview] = useState<{ totalPedidos: number; montoTotal: number; sesionId: number | null } | null>(null);
+  const [loadingMerge, setLoadingMerge] = useState(false);
   const [vistaMapa, setVistaMapa] = useState(false);
   const [zonasLayout, setZonasLayout] = useState<Record<string, ZonaRect>>({});
 
@@ -435,6 +441,65 @@ export default function AdminDashboard() {
     v.focus();
     v.print();
     v.close();
+  };
+
+  const cargarPreviewMesa = async (mesaId: number, sesionPrincipalId: number) => {
+    setMesaBId(mesaId);
+    setMergePreview(null);
+    try {
+      const res = await fetch(`/api/mozo/sesion/${sesionPrincipalId}/unir-mesa?mesaId=${mesaId}`);
+      if (res.ok) setMergePreview(await res.json());
+    } catch { /* preview es opcional */ }
+  };
+
+  const ejecutarUnion = async () => {
+    if (!mesaParaUnir || !mesaBId) return;
+    setLoadingMerge(true);
+    try {
+      const res = await fetch(`/api/mozo/sesion/${mesaParaUnir.sesionId}/unir-mesa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mesaUnidaId: mesaBId }),
+      });
+      if (res.ok) {
+        toast.success(`Mesa ${mesaParaUnir.nombre} + ${(mesas as any[]).find((m: any) => m.id === mesaBId)?.nombre ?? mesaBId} unidas`);
+        setMesaParaUnir(null);
+        setMesaBId(null);
+        setMergePreview(null);
+        mutate();
+      } else {
+        const { error } = await res.json();
+        toast.error(error || "No se pudo unir");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setLoadingMerge(false);
+    }
+  };
+
+  const ejecutarSeparar = async (sesionId: number, mesaUnidaId: number, mesaNombre: string) => {
+    if (!confirm(`Los pedidos ya tomados quedan en la mesa principal. ¿Separar Mesa ${mesaNombre}?`)) return;
+    try {
+      const res = await fetch(`/api/mozo/sesion/${sesionId}/separar-mesa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mesaUnidaId }),
+      });
+      if (res.ok) {
+        toast.success(`Mesa ${mesaNombre} separada`);
+        mutate();
+        setMesaParaCobrar((prev: any) => prev
+          ? { ...prev, mesasUnidas: prev.mesasUnidas?.filter((m: any) => m.id !== mesaUnidaId) ?? [] }
+          : null
+        );
+      } else {
+        const { error } = await res.json();
+        toast.error(error || "No se pudo separar");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    }
   };
 
   const ejecutarCierre = async () => {
@@ -710,12 +775,21 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setMesaParaCobrar(mesa)}
-                      className={`w-full py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}`}
-                    >
-                      COBRAR MESA
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setMesaParaUnir(mesa)}
+                        className="p-2.5 rounded-xl border-2 border-gray-200 text-gray-400 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-95 shrink-0"
+                        title="Unir con otra mesa"
+                      >
+                        <Link2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => setMesaParaCobrar(mesa)}
+                        className={`flex-1 py-2.5 text-white rounded-xl text-sm font-bold shadow-md active:scale-95 transition-all ${mesa.solicitaCuenta ? "bg-yellow-500 hover:bg-yellow-600 text-yellow-950" : "bg-gray-900 hover:bg-black"}`}
+                      >
+                        COBRAR MESA
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <div className="h-24 flex flex-col items-center justify-center text-gray-300">
@@ -729,6 +803,89 @@ export default function AdminDashboard() {
           })}
         </div>
       </div>
+
+      {/* ── MODAL UNIR MESAS ─────────────────────────────────────────────── */}
+      {mesaParaUnir && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="bg-blue-600 p-5 text-white text-center relative">
+              <button
+                onClick={() => { setMesaParaUnir(null); setMesaBId(null); setMergePreview(null); }}
+                className="absolute top-4 right-4 p-1.5 bg-white/20 hover:bg-white/30 rounded-full active:scale-95"
+              >
+                <X size={18} />
+              </button>
+              <Link2 size={22} className="mx-auto mb-1 opacity-80" />
+              <h3 className="text-lg font-black uppercase tracking-tight">
+                Unir mesa {mesaParaUnir.nombre}
+              </h3>
+              <p className="text-blue-100 text-xs mt-0.5">Seleccioná la mesa a incorporar</p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">
+                  Mesa a unir
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-400"
+                  value={mesaBId ?? ""}
+                  onChange={(e) => {
+                    const id = Number(e.target.value);
+                    if (id) cargarPreviewMesa(id, mesaParaUnir.sesionId);
+                    else { setMesaBId(null); setMergePreview(null); }
+                  }}
+                >
+                  <option value="">— Elegir mesa —</option>
+                  {(mesas as any[])
+                    .filter((m: any) =>
+                      m.id !== mesaParaUnir.id &&
+                      m.sesionActivaId === null &&
+                      m.estado !== "LIBRE" || (m.estado === "LIBRE" && m.id !== mesaParaUnir.id && m.sesionActivaId === null)
+                    )
+                    .filter((m: any) => m.id !== mesaParaUnir.id && m.sesionActivaId === null)
+                    .map((m: any) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombre} — {m.estado === "OCUPADA" ? `OCUPADA ($${m.totalActual})` : "Libre"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {mergePreview && (
+                <div className={`rounded-2xl p-4 text-sm space-y-1 ${mergePreview.totalPedidos > 0 ? "bg-amber-50 border-2 border-amber-200" : "bg-green-50 border-2 border-green-200"}`}>
+                  {mergePreview.totalPedidos > 0 ? (
+                    <>
+                      <p className="font-black text-amber-800">
+                        Mesa {(mesas as any[]).find((m: any) => m.id === mesaBId)?.nombre} tiene {mergePreview.totalPedidos} pedido{mergePreview.totalPedidos > 1 ? "s" : ""} (${mergePreview.montoTotal})
+                      </p>
+                      <p className="text-amber-700 text-xs">Al unir, pasan a Mesa {mesaParaUnir.nombre}.</p>
+                    </>
+                  ) : (
+                    <p className="font-black text-green-800">Mesa sin pedidos — se puede unir sin transferencia.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={() => { setMesaParaUnir(null); setMesaBId(null); setMergePreview(null); }}
+                  className="py-3 rounded-xl border-2 border-gray-200 font-bold text-gray-600 text-sm hover:bg-gray-50 active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={ejecutarUnion}
+                  disabled={!mesaBId || loadingMerge}
+                  className="py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {loadingMerge ? "Uniendo..." : "Confirmar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL COBRO ──────────────────────────────────────────────────── */}
       {mesaParaCobrar &&
@@ -856,6 +1013,26 @@ export default function AdminDashboard() {
                       <p className="text-center text-xs text-blue-400 font-medium">Pago único — subí para dividir</p>
                     )}
                   </div>
+
+                  {/* Mesas unidas */}
+                  {mesaParaCobrar.mesasUnidas?.length > 0 && (
+                    <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
+                      <p className="text-xs font-black text-blue-700 uppercase tracking-widest flex items-center gap-1.5">
+                        <Link2 size={13} /> Mesas unidas
+                      </p>
+                      {mesaParaCobrar.mesasUnidas.map((m: any) => (
+                        <div key={m.id} className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-blue-800">Mesa {m.nombre}</span>
+                          <button
+                            onClick={() => ejecutarSeparar(mesaParaCobrar.sesionId, m.id, m.nombre)}
+                            className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors active:scale-95"
+                          >
+                            <Link2Off size={12} /> Separar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Método de pago */}
                   {metodo ? (

@@ -26,6 +26,7 @@ export async function GET() {
         sector: true,
         posX: true,
         posY: true,
+        sesionActivaId: true,
         sesiones: {
           where: { fechaFin: null },
           take: 1,
@@ -36,6 +37,7 @@ export async function GET() {
             metodoPago: true,
             llamadaMozo: true,
             propina: true,
+            mesasUnidas: { select: { id: true, nombre: true } },
             pedidos: {
               where: { estado: { not: "CANCELADO" } },
               orderBy: { fecha: "desc" },
@@ -73,6 +75,7 @@ export async function GET() {
         solicitaCuenta: null,
         metodoPago: null,
         llamadaMozo: null,
+        mesasUnidas: [],
       };
 
       if (sesionActiva) {
@@ -119,6 +122,7 @@ export async function GET() {
           metodoPago: sesionActiva.metodoPago ?? null,
           llamadaMozo: sesionActiva.llamadaMozo ?? null,
           propina: sesionActiva.propina ?? 0,
+          mesasUnidas: sesionActiva.mesasUnidas,
         };
       }
 
@@ -129,6 +133,7 @@ export async function GET() {
         sector: mesa.sector || "General",
         posX: mesa.posX,
         posY: mesa.posY,
+        sesionActivaId: mesa.sesionActivaId,
         ...infoSesion,
       };
     });

@@ -84,11 +84,14 @@ export async function POST(req: Request) {
         },
       });
       
-      // Liberamos la mesa asociada para que pueda usarse de nuevo
-      // (Aunque la lógica principal es por sesión, esto ayuda si usas flags en Mesa)
+      // Liberamos la mesa principal y todas las mesas subordinadas vía merge
       await tx.mesa.update({
         where: { id: sesion.mesaId },
-        data: { activo: true } 
+        data: { activo: true },
+      });
+      await tx.mesa.updateMany({
+        where: { sesionActivaId: sesionId },
+        data: { sesionActivaId: null },
       });
 
       return { total: totalFinal, propina, fecha: sesionCerrada.fechaFin };
