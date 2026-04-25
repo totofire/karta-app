@@ -77,7 +77,7 @@ export default function BarraPage() {
           </head>
           <body>
             <div class="header">
-              <div class="title">🍸 BARRA: MESA ${p.sesion.mesa.nombre}</div>
+              <div class="title">🍸 BARRA: MESA ${p.mesasLabel}</div>
             </div>
             ${p.items.map((item: any) => `
               <div class="item">
@@ -198,7 +198,7 @@ export default function BarraPage() {
               <div className={`p-4 border-b border-dashed border-gray-300 flex justify-between items-start ${esDemorado ? "bg-red-50" : "bg-gray-50"}`}>
                 <div>
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
-                    Mesa {p.sesion.mesa.nombre}
+                    Mesa {p.mesasLabel}
                   </h3>
                 </div>
                 <div className="flex flex-col items-end gap-1">

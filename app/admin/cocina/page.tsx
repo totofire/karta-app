@@ -66,7 +66,7 @@ export default function CocinaPage() {
       ventana.document.write(`
         <html>
           <head>
-            <title>Comanda ${p.sesion.mesa.nombre}</title>
+            <title>Comanda ${p.mesasLabel}</title>
             <style>
               body { font-family: 'Courier New', monospace; padding: 10px; width: 300px; margin: 0 auto; }
               .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
@@ -80,7 +80,7 @@ export default function CocinaPage() {
           </head>
           <body>
             <div class="header">
-              <div class="title">MESA ${p.sesion.mesa.nombre}</div>
+              <div class="title">MESA ${p.mesasLabel}</div>
               <div class="meta">Hora: ${new Date(p.fecha).toLocaleTimeString()}</div>
             </div>
             ${p.items.map((item: any) => `
@@ -215,7 +215,7 @@ export default function CocinaPage() {
               <div className={`p-4 border-b border-dashed border-gray-300 flex justify-between items-start ${esDemorado ? "bg-red-50" : "bg-gray-50"}`}>
                 <div>
                   <h3 className="text-xl font-black text-slate-900 leading-none mb-1">
-                    Mesa {p.sesion.mesa.nombre}
+                    Mesa {p.mesasLabel}
                   </h3>
                 </div>
                 <div className="flex flex-col items-end gap-1">

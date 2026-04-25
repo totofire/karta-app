@@ -112,6 +112,11 @@ export default function KDSListener({ sector, mutate, canceladosPorAdmin }: KDSL
         { event: "DELETE", schema: "public", table: "Pedido", filter: `localId=eq.${localId}` },
         () => { mutateRef.current(); }
       )
+      // Cuando sesionActivaId cambia en una Mesa (merge/separar), el label del KDS cambia
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "Mesa", filter: `localId=eq.${localId}` },
+        () => { mutateRef.current(); }
+      )
       .subscribe((status, err) => {
         console.log(`[RT] kds-${sector} local-${localId} status: ${status}`, err || "");
         if (status === "SUBSCRIBED") {
