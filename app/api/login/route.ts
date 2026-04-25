@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { SignJWT } from "jose";
-import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
@@ -44,15 +43,15 @@ export async function POST(req: Request) {
       .setExpirationTime("24h")
       .sign(secret);
 
-    const cookieStore = await cookies();
-    cookieStore.set("token", token, {
+    const response = NextResponse.json({ success: true, rol: usuario.rol });
+    response.cookies.set("token", token, {
       path:     "/",
       httpOnly: true,
       secure:   process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge:   60 * 60 * 24,
     });
-
-    return NextResponse.json({ success: true, rol: usuario.rol });
+    return response;
 
   } catch (error) {
     console.error("Error en login:", error);
