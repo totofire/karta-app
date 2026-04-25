@@ -17,20 +17,28 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
 
-    if (res.ok) {
-      toast.success("Bienvenido, Jefe", { duration: 2000 });
-      setTimeout(() => {
-        toast.dismiss();
-        router.push("/admin");
-      }, 2000);
-    } else {
-      toast.error("Datos incorrectos", { duration: 4000 });
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success("Bienvenido", { duration: 1200 });
+        const destino =
+          data.rol === "MOZO"        ? "/mozo" :
+          data.rol === "SUPER_ADMIN" ? "/superadmin/dashboard" :
+          "/admin";
+        setTimeout(() => router.push(destino), 800);
+      } else {
+        toast.error(data.error || "Credenciales incorrectas", { duration: 4000 });
+        setLoading(false);
+      }
+    } catch {
+      toast.error("Error de conexión. Intentá de nuevo.", { duration: 4000 });
       setLoading(false);
     }
   };
