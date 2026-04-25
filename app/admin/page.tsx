@@ -319,18 +319,41 @@ function MapCanvas({
               }}
             >
               <div
-                className={`w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center cursor-pointer hover:scale-110 transition-transform relative bg-white ${mesa.solicitaCuenta ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse" : mesa.estado === "OCUPADA" ? "border-red-400 text-red-600" : "border-gray-300 text-gray-400 opacity-50"}`}
+                className={`w-24 h-24 rounded-2xl shadow-lg border-2 flex flex-col items-center justify-center transition-transform relative bg-white ${
+                  mesa.solicitaCuenta
+                    ? "border-yellow-500 ring-4 ring-yellow-200 ring-opacity-70 animate-pulse cursor-pointer hover:scale-110"
+                    : mesa.estado === "UNIDA"
+                      ? "border-dashed border-slate-300 text-slate-400 opacity-70 cursor-default"
+                      : mesa.estado === "OCUPADA"
+                        ? "border-red-400 text-red-600 cursor-pointer hover:scale-110"
+                        : "border-gray-300 text-gray-400 opacity-50 cursor-default"
+                }`}
               >
                 <div className="absolute -top-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -bottom-2.5 w-10 h-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -left-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
                 <div className="absolute -right-2.5 h-10 w-2.5 bg-gray-300 rounded-full pointer-events-none" />
+
+                {/* Indicador mesas fusionadas (principal) */}
+                {mesa.mesasUnidas?.length > 0 && (
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-20 bg-slate-800 text-white text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap shadow-md flex items-center gap-1">
+                    <Link2 size={8} /> +{mesa.mesasUnidas.length}
+                  </div>
+                )}
+
+                {/* Indicador mesa subordinada */}
+                {mesa.estado === "UNIDA" && (
+                  <div className="absolute inset-0 rounded-2xl flex items-center justify-center pointer-events-none">
+                    <Link2 size={20} className="text-slate-400" />
+                  </div>
+                )}
+
                 {mesa.solicitaCuenta && (
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-20 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full animate-bounce whitespace-nowrap shadow-lg flex items-center gap-1">
                     <HandCoins size={10} /> PIDE CUENTA
                   </div>
                 )}
-                <span className="font-black text-lg leading-none">
+                <span className={`font-black text-lg leading-none ${mesa.estado === "UNIDA" ? "opacity-40" : ""}`}>
                   {mesa.nombre}
                 </span>
                 {mesa.estado === "OCUPADA" && (
@@ -340,7 +363,7 @@ function MapCanvas({
                 )}
                 {metodo && mesa.solicitaCuenta && (
                   <div
-                    className={`absolute -bottom-6 left-1/2 -translate-x-1/2 z-20 text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm text-white ${mesa.metodoPago === "QR" ? "bg-blue-500" : mesa.metodoPago === "TARJETA" ? "bg-purple-500" : "bg-green-600"}`}
+                    className={`absolute -bottom-6 left-1/2 -translate-x-1/2 z-20 text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm text-white ${mesa.metodoPago === "QR" ? "bg-slate-700" : mesa.metodoPago === "TARJETA" ? "bg-purple-500" : "bg-green-600"}`}
                   >
                     {metodo.emoji} {metodo.labelCorto}
                   </div>
@@ -534,6 +557,15 @@ export default function AdminDashboard() {
       : mesas.filter((m: any) => m.sector === filtroSector);
   }, [mesas, filtroSector]);
 
+  // Para UNIDA cards: encontrar la mesa principal por sesionId
+  const mesaPorSesionId = useMemo(() => {
+    const map: Record<number, any> = {};
+    (mesas as any[]).forEach((m: any) => {
+      if (m.sesionId) map[m.sesionId] = m;
+    });
+    return map;
+  }, [mesas]);
+
   const sectoresConZona = useMemo(
     () => sectores.filter((s) => !!zonasLayout[s.nombre]),
     [sectores, zonasLayout],
@@ -699,14 +731,16 @@ export default function AdminDashboard() {
             return (
               <div
                 key={mesa.id}
-                className={`relative p-5 rounded-2xl border transition-all duration-300 ${
+                className={`relative p-5 rounded-2xl border transition-all duration-300 overflow-hidden ${
                   mesa.solicitaCuenta
                     ? "bg-yellow-50 border-yellow-400 shadow-xl shadow-yellow-100 ring-2 ring-yellow-400 ring-offset-2 animate-pulse"
                     : mesa.llamadaMozo
                       ? "bg-orange-50 border-orange-300 shadow-xl shadow-orange-100 ring-2 ring-orange-300 ring-offset-2"
                       : mesa.estado === "OCUPADA"
                         ? "bg-white border-red-100 shadow-lg shadow-red-50 hover:shadow-xl hover:-translate-y-1"
-                        : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
+                        : mesa.estado === "UNIDA"
+                          ? "bg-slate-50 border-dashed border-slate-300"
+                          : "bg-white border-dashed border-gray-200 opacity-60 hover:opacity-100 hover:border-green-200"
                 }`}
               >
                 <div className="flex justify-between items-start mb-4">
@@ -719,9 +753,14 @@ export default function AdminDashboard() {
                     </span>
                   </div>
                   <span
-                    className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide ${mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900" : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}
+                    className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide ${
+                      mesa.solicitaCuenta ? "bg-yellow-400 text-yellow-900"
+                      : mesa.estado === "UNIDA" ? "bg-slate-200 text-slate-600"
+                      : mesa.estado === "OCUPADA" ? "bg-red-100 text-red-600"
+                      : "bg-green-100 text-green-600"
+                    }`}
                   >
-                    {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado}
+                    {mesa.solicitaCuenta ? "PIDIENDO" : mesa.estado === "UNIDA" ? "UNIDA" : mesa.estado}
                   </span>
                 </div>
 
@@ -737,8 +776,38 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                {mesa.estado === "OCUPADA" ? (
+                {mesa.estado === "UNIDA" ? (
+                  /* ── Mesa subordinada unida a otra ─────────────── */
+                  <div className="flex flex-col items-center justify-center py-5 gap-3">
+                    <div className="w-14 h-14 rounded-full bg-slate-200 flex items-center justify-center">
+                      <Link2 size={26} className="text-slate-500" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-black text-slate-700">
+                        Unida a {mesaPorSesionId[mesa.sesionActivaId]?.nombre ?? "mesa principal"}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Los pedidos van a la mesa principal
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => ejecutarSeparar(mesa.sesionActivaId!, mesa.id, mesa.nombre)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl border-2 border-slate-200 text-slate-600 text-xs font-black hover:bg-red-50 hover:border-red-200 hover:text-red-600 active:scale-95 transition-all"
+                    >
+                      <Link2Off size={13} /> Separar mesa
+                    </button>
+                  </div>
+                ) : mesa.estado === "OCUPADA" ? (
                   <>
+                    {/* Banner mesas fusionadas */}
+                    {mesa.mesasUnidas?.length > 0 && (
+                      <div className="flex items-center gap-2 bg-slate-800 text-white rounded-xl px-3 py-2 mb-3 text-xs font-black">
+                        <Link2 size={11} className="shrink-0" />
+                        <span className="truncate">
+                          {mesa.nombre} + {mesa.mesasUnidas.map((m: any) => m.nombre).join(" + ")}
+                        </span>
+                      </div>
+                    )}
                     <div className="space-y-3 mb-6">
                       <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
                         <div className="flex items-center gap-2">
@@ -761,7 +830,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-baseline justify-between pt-3 border-t border-dashed border-gray-100">
                         <span className="text-xs font-bold text-gray-400 uppercase">
-                          Total
+                          {mesa.mesasUnidas?.length > 0 ? "Total combinado" : "Total"}
                         </span>
                         <div className="flex items-center text-gray-900">
                           <DollarSign
@@ -778,7 +847,7 @@ export default function AdminDashboard() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => setMesaParaUnir(mesa)}
-                        className="p-2.5 rounded-xl border-2 border-gray-200 text-gray-400 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-95 shrink-0"
+                        className="p-2.5 rounded-xl border-2 border-gray-200 text-gray-400 hover:border-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all active:scale-95 shrink-0"
                         title="Unir con otra mesa"
                       >
                         <Link2 size={18} />
@@ -808,7 +877,7 @@ export default function AdminDashboard() {
       {mesaParaUnir && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="bg-blue-600 p-5 text-white text-center relative">
+            <div className="bg-slate-900 p-5 text-white text-center relative">
               <button
                 onClick={() => { setMesaParaUnir(null); setMesaBId(null); setMergePreview(null); }}
                 className="absolute top-4 right-4 p-1.5 bg-white/20 hover:bg-white/30 rounded-full active:scale-95"
@@ -819,7 +888,7 @@ export default function AdminDashboard() {
               <h3 className="text-lg font-black uppercase tracking-tight">
                 Unir mesa {mesaParaUnir.nombre}
               </h3>
-              <p className="text-blue-100 text-xs mt-0.5">Seleccioná la mesa a incorporar</p>
+              <p className="text-slate-300 text-xs mt-0.5">Seleccioná la mesa a incorporar</p>
             </div>
 
             <div className="p-5 space-y-4">
@@ -828,7 +897,7 @@ export default function AdminDashboard() {
                   Mesa a unir
                 </label>
                 <select
-                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-400"
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-slate-500"
                   value={mesaBId ?? ""}
                   onChange={(e) => {
                     const id = Number(e.target.value);
@@ -877,7 +946,7 @@ export default function AdminDashboard() {
                 <button
                   onClick={ejecutarUnion}
                   disabled={!mesaBId || loadingMerge}
-                  className="py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-black active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {loadingMerge ? "Uniendo..." : "Confirmar"}
                 </button>
@@ -1016,13 +1085,18 @@ export default function AdminDashboard() {
 
                   {/* Mesas unidas */}
                   {mesaParaCobrar.mesasUnidas?.length > 0 && (
-                    <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
-                      <p className="text-xs font-black text-blue-700 uppercase tracking-widest flex items-center gap-1.5">
-                        <Link2 size={13} /> Mesas unidas
+                    <div className="bg-slate-50 rounded-2xl p-4 space-y-2 border border-slate-200">
+                      <p className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+                        <Link2 size={13} /> Mesas fusionadas
                       </p>
                       {mesaParaCobrar.mesasUnidas.map((m: any) => (
-                        <div key={m.id} className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-blue-800">Mesa {m.nombre}</span>
+                        <div key={m.id} className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center">
+                              <Link2 size={10} className="text-slate-600" />
+                            </div>
+                            <span className="text-sm font-black text-slate-800">{m.nombre}</span>
+                          </div>
                           <button
                             onClick={() => ejecutarSeparar(mesaParaCobrar.sesionId, m.id, m.nombre)}
                             className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors active:scale-95"

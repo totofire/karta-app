@@ -4,7 +4,9 @@
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\tomi0\\sistema-pedidos\\app\\api\\superadmin\\locales\\[id]",

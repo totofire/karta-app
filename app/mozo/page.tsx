@@ -399,7 +399,9 @@ export default function PanelMozo() {
                           ? "border-orange-300 shadow-orange-100"
                           : pedidoListo
                             ? "border-red-200 shadow-red-50"
-                            : "border-slate-100"
+                            : mesa.esUnida
+                              ? "border-dashed border-slate-300"
+                              : "border-slate-100"
                       }`}
                   >
                     {/* Banda llamado al mozo */}
@@ -476,6 +478,20 @@ export default function PanelMozo() {
                         </div>
                       </div>
 
+                      {/* Indicador mesas fusionadas en la principal */}
+                      {(() => {
+                        const unidas = mesas.filter((m: any) => m.sesionPrincipalId === mesa.sesionId);
+                        if (!unidas.length) return null;
+                        return (
+                          <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2 mb-3 border border-slate-200">
+                            <Link2 size={11} className="text-slate-600 shrink-0" />
+                            <span className="text-xs font-black text-slate-700 truncate">
+                              {mesa.nombre} + {unidas.map((m: any) => m.nombre).join(" + ")}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
                       {/* Resumen de ítems (máx 3) */}
                       {mesa.detalles?.length > 0 && (
                         <div className="bg-slate-50 rounded-xl px-3 py-2 mb-3 space-y-1.5">
@@ -499,9 +515,11 @@ export default function PanelMozo() {
                       {/* Botones de acción */}
                       {mesa.esUnida ? (
                         /* Mesa subordinada (unida a otra) */
-                        <div className="flex items-center justify-between gap-2 bg-blue-50 rounded-xl px-3 py-2.5">
-                          <div className="flex items-center gap-1.5 text-blue-700 text-xs font-black">
-                            <Link2 size={13} />
+                        <div className="flex items-center justify-between gap-2 bg-slate-100 rounded-xl px-3 py-2.5 border border-slate-200">
+                          <div className="flex items-center gap-2 text-slate-700 text-xs font-black">
+                            <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
+                              <Link2 size={10} className="text-white" />
+                            </div>
                             Unida a {mesa.mesaPrincipalNombre}
                           </div>
                           <button
@@ -543,7 +561,7 @@ export default function PanelMozo() {
                           {/* Botón Unir mesa (solo mesas ocupadas no unidas) */}
                           <button
                             onClick={() => setModalUnir(mesa)}
-                            className="col-span-2 py-2.5 rounded-xl border-2 border-slate-100 text-slate-400 font-bold text-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50"
+                            className="col-span-2 py-2.5 rounded-xl border-2 border-slate-100 text-slate-400 font-bold text-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 hover:border-slate-300 hover:text-slate-700 hover:bg-slate-50"
                           >
                             <Link2 size={13} /> Unir con otra mesa
                           </button>
@@ -605,7 +623,7 @@ export default function PanelMozo() {
 
             <div className="px-5 py-3 flex items-center justify-between border-b border-slate-100">
               <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
-                <Link2 size={20} className="text-blue-600" />
+                <Link2 size={20} className="text-slate-700" />
                 Unir {modalUnir.nombre}
               </h3>
               <button
@@ -622,7 +640,7 @@ export default function PanelMozo() {
                   Mesa a incorporar
                 </p>
                 <select
-                  className="w-full border-2 border-slate-200 rounded-xl px-3 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-400 bg-white"
+                  className="w-full border-2 border-slate-200 rounded-xl px-3 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-slate-500 bg-white"
                   value={mesaBId ?? ""}
                   onChange={(e) => {
                     const id = Number(e.target.value);
@@ -663,7 +681,7 @@ export default function PanelMozo() {
               <button
                 onClick={ejecutarUnion}
                 disabled={!mesaBId || loadingMerge}
-                className="w-full py-4 rounded-2xl bg-blue-600 text-white font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
+                className="w-full py-4 rounded-2xl bg-slate-900 text-white font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
               >
                 {loadingMerge ? (
                   <Loader2 size={20} className="animate-spin" />
