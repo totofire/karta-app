@@ -18,15 +18,25 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
+      console.log("[LOGIN] enviando request...");
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
-      const data = await res.json();
+      console.log("[LOGIN] status:", res.status, res.statusText);
 
-      if (res.ok) {
+      let data: { success?: boolean; rol?: string; error?: string } = {};
+      try {
+        data = await res.json();
+        console.log("[LOGIN] response data:", data);
+      } catch (e) {
+        console.error("[LOGIN] error parseando JSON de respuesta:", e);
+      }
+
+      if (res.ok && data.success) {
+        console.log("[LOGIN] OK — redirigiendo a rol:", data.rol);
         toast.success("Bienvenido", { duration: 1200 });
         const destino =
           data.rol === "MOZO"        ? "/mozo" :
@@ -34,10 +44,12 @@ export default function LoginPage() {
           "/admin";
         setTimeout(() => router.push(destino), 800);
       } else {
+        console.warn("[LOGIN] FALLO:", data.error);
         toast.error(data.error || "Credenciales incorrectas", { duration: 4000 });
         setLoading(false);
       }
-    } catch {
+    } catch (e) {
+      console.error("[LOGIN] excepción fetch:", e);
       toast.error("Error de conexión. Intentá de nuevo.", { duration: 4000 });
       setLoading(false);
     }
