@@ -33,15 +33,23 @@ export async function GET() {
         sesion: {
           select: {
             mesa: { select: { nombre: true } },
+            mesasUnidas: { select: { nombre: true } },
           },
         },
       },
       orderBy: { fecha: "asc" },
     });
 
-    // Filtramos para enviar solo pedidos que tengan items de barra
-    const pedidosBarra = pedidos.filter((p) => p.items.length > 0);
-    
+    const pedidosBarra = pedidos
+      .filter((p) => p.items.length > 0)
+      .map((p) => {
+        const mesasPrincipal = p.sesion.mesa.nombre;
+        const mesasExtra = p.sesion.mesasUnidas.map((m) => m.nombre);
+        const mesasLabel = [mesasPrincipal, ...mesasExtra].join(" + ");
+        const { mesasUnidas: _mu, ...sesionRest } = p.sesion;
+        return { ...p, sesion: sesionRest, mesasLabel };
+      });
+
     return NextResponse.json(pedidosBarra);
   } catch (error) {
     return NextResponse.json({ error: "Error obteniendo bebidas" }, { status: 500 });
