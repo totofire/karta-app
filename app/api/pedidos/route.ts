@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { obtenerReglasActivas, aplicarReglasAItems } from "@/lib/descuentos";
+import { EstadoSesion } from "@prisma/client";
 
 interface ProductoRequest {
   productoId: number;
@@ -19,15 +20,32 @@ export async function POST(request: Request) {
     }
 
     // 2. BUSCAR SESIÓN (y traemos la mesa para saber de qué LOCAL es)
-    const sesion = await prisma.sesion.findUnique({
+    let sesion = await prisma.sesion.findUnique({
       where: { tokenEfimero },
-      include: { mesa: true }
+      include: { mesa: { select: { id: true, nombre: true, localId: true, sesionActivaId: true } } }
     });
 
     // 3. VALIDACIONES DE SEGURIDAD
     if (!sesion) {
       return NextResponse.json({ error: "Sesión inválida" }, { status: 403 });
     }
+
+    // Si la sesión fue absorbida por un merge, resolver la sesión activa del local
+    if (sesion.estado === EstadoSesion.MERGED || (sesion.fechaFin && sesion.mesa.sesionActivaId)) {
+      const sesionActivaId = sesion.mesa.sesionActivaId;
+      if (!sesionActivaId) {
+        return NextResponse.json({ error: "Mesa cerrada. Escaneá QR nuevo." }, { status: 410 });
+      }
+      const sesionActiva = await prisma.sesion.findFirst({
+        where: { id: sesionActivaId, fechaFin: null },
+        include: { mesa: { select: { id: true, nombre: true, localId: true, sesionActivaId: true } } }
+      });
+      if (!sesionActiva) {
+        return NextResponse.json({ error: "Mesa cerrada. Escaneá QR nuevo." }, { status: 410 });
+      }
+      sesion = sesionActiva;
+    }
+
     if (sesion.fechaFin) {
       return NextResponse.json({ error: "Mesa cerrada. Escaneá QR nuevo." }, { status: 410 });
     }
