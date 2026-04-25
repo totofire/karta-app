@@ -42,7 +42,9 @@ export default function LoginPage() {
           data.rol === "MOZO"        ? "/mozo" :
           data.rol === "SUPER_ADMIN" ? "/superadmin/dashboard" :
           "/admin";
-        setTimeout(() => router.push(destino), 800);
+        // Hard redirect: fuerza recarga completa para que el middleware
+        // lea la cookie recién seteada y no quede atrapado en /login
+        setTimeout(() => { window.location.href = destino; }, 800);
       } else {
         console.warn("[LOGIN] FALLO:", data.error);
         toast.error(data.error || "Credenciales incorrectas", { duration: 4000 });
