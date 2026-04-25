@@ -126,6 +126,11 @@ export async function GET() {
         };
       }
 
+      // Mesa subordinada a otra sesión via merge → estado especial
+      if (mesa.sesionActivaId !== null && infoSesion.estado === "LIBRE") {
+        infoSesion.estado = "UNIDA";
+      }
+
       return {
         id: mesa.id,
         nombre: mesa.nombre,

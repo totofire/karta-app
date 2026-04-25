@@ -20,11 +20,18 @@ export async function GET() {
               where: { estado: { not: "CANCELADO" } },
               include: {
                 items: {
-                  where: { estado: { not: "CANCELADO" } }, // 👈 FILTRAR ITEMS CANCELADOS
+                  where: { estado: { not: "CANCELADO" } },
                   include: { producto: true },
                 },
               },
             },
+          },
+        },
+        // Mesa subordinada: apunta a otra sesión via merge
+        sesionActiva: {
+          select: {
+            id: true,
+            mesa: { select: { id: true, nombre: true } },
           },
         },
       },
@@ -60,11 +67,18 @@ export async function GET() {
         detalles.push(...mapa.values());
       }
 
+      const esUnida = m.sesionActivaId !== null;
+
       return {
         id: m.id,
         nombre: m.nombre,
         sector: m.sector,
-        ocupada: m.sesiones.length > 0,
+        ocupada: m.sesiones.length > 0 || esUnida,
+        esUnida,
+        sesionActivaId: m.sesionActivaId,
+        mesaPrincipalId: m.sesionActiva?.mesa.id ?? null,
+        mesaPrincipalNombre: m.sesionActiva?.mesa.nombre ?? null,
+        sesionPrincipalId: m.sesionActiva?.id ?? null,
         totalActual,
         horaInicio: sesion?.fechaInicio ?? null,
         sesionId: sesion?.id ?? null,

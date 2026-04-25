@@ -21,6 +21,8 @@ import {
   AlertCircle,
   BellRing,
   Check,
+  Link2,
+  Link2Off,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { audioManager } from "@/lib/audio";
@@ -102,6 +104,10 @@ export default function PanelMozo() {
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [cancelandoItem, setCancelandoItem] = useState<Set<number>>(new Set());
   const [atendiendo, setAtendiendo] = useState<Set<number>>(new Set());
+  const [modalUnir, setModalUnir] = useState<any | null>(null);
+  const [mesaBId, setMesaBId] = useState<number | null>(null);
+  const [mergePreview, setMergePreview] = useState<{ totalPedidos: number; montoTotal: number } | null>(null);
+  const [loadingMerge, setLoadingMerge] = useState(false);
 
   const MOTIVO_LABEL: Record<string, string> = {
     SERVILLETAS: "Servilletas",
@@ -207,11 +213,60 @@ export default function PanelMozo() {
     finally { setCancelandoItem((prev) => { const n = new Set(prev); n.delete(itemId); return n; }); }
   };
 
-  const mesasLibres   = mesas.filter((m) => !m.ocupada);
-  const mesasOcupadas = mesas.filter((m) =>  m.ocupada);
-  const pidenCuenta   = mesasOcupadas.filter((m) => m.solicitaCuenta).length;
+  const cargarPreviewMerge = async (mesaId: number, sesionPrincipalId: number) => {
+    setMesaBId(mesaId);
+    setMergePreview(null);
+    try {
+      const res = await fetch(`/api/mozo/sesion/${sesionPrincipalId}/unir-mesa?mesaId=${mesaId}`);
+      if (res.ok) setMergePreview(await res.json());
+    } catch { /* preview es opcional */ }
+  };
+
+  const ejecutarUnion = async () => {
+    if (!modalUnir || !mesaBId) return;
+    setLoadingMerge(true);
+    try {
+      const res = await fetch(`/api/mozo/sesion/${modalUnir.sesionId}/unir-mesa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mesaUnidaId: mesaBId }),
+      });
+      if (res.ok) {
+        const mesaBNombre = mesas.find((m: any) => m.id === mesaBId)?.nombre ?? mesaBId;
+        toast.success(`${modalUnir.nombre} + ${mesaBNombre} unidas`);
+        cerrarModalUnir();
+        mutate();
+      } else {
+        const d = await res.json();
+        toast.error(d.error || "No se pudo unir");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setLoadingMerge(false);
+    }
+  };
+
+  const ejecutarSeparar = async (sesionPrincipalId: number, mesaUnidaId: number, mesaNombre: string) => {
+    if (!confirm(`Los pedidos ya tomados quedan en la mesa principal. ¿Separar Mesa ${mesaNombre}?`)) return;
+    try {
+      const res = await fetch(`/api/mozo/sesion/${sesionPrincipalId}/separar-mesa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mesaUnidaId }),
+      });
+      if (res.ok) { toast.success(`Mesa ${mesaNombre} separada`); mutate(); }
+      else { const d = await res.json(); toast.error(d.error || "No se pudo separar"); }
+    } catch { toast.error("Error de conexión"); }
+  };
+
+  const cerrarModalUnir = () => { setModalUnir(null); setMesaBId(null); setMergePreview(null); };
+
+  const mesasLibres   = mesas.filter((m: any) => !m.ocupada);
+  const mesasOcupadas = mesas.filter((m: any) =>  m.ocupada);
+  const pidenCuenta   = mesasOcupadas.filter((m: any) => m.solicitaCuenta).length;
   const listasCount   = pedidosListos.size;
-  const llamadosCount = mesasOcupadas.filter((m) => m.llamadaMozo).length;
+  const llamadosCount = mesasOcupadas.filter((m: any) => m.llamadaMozo).length;
 
   const metodosLabel: Record<MetodoPago, string> = {
     QR: "📱 QR / Digital",
@@ -442,34 +497,58 @@ export default function PanelMozo() {
                       )}
 
                       {/* Botones de acción */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          disabled={cargando}
-                          onClick={() => abrirDetalle(mesa)}
-                          className="py-3.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
-                        >
-                          <ClipboardList size={15} />
-                          Pedidos
-                        </button>
+                      {mesa.esUnida ? (
+                        /* Mesa subordinada (unida a otra) */
+                        <div className="flex items-center justify-between gap-2 bg-blue-50 rounded-xl px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 text-blue-700 text-xs font-black">
+                            <Link2 size={13} />
+                            Unida a {mesa.mesaPrincipalNombre}
+                          </div>
+                          <button
+                            onClick={() => ejecutarSeparar(mesa.sesionPrincipalId, mesa.id, mesa.nombre)}
+                            className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1.5 rounded-lg transition-colors active:scale-95"
+                          >
+                            <Link2Off size={12} /> Separar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            disabled={cargando}
+                            onClick={() => abrirDetalle(mesa)}
+                            className="py-3.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <ClipboardList size={15} />
+                            Pedidos
+                          </button>
 
-                        <button
-                          disabled={pideCuenta || cargando}
-                          onClick={() => !pideCuenta && setModalCuenta({ mesa, metodo: null })}
-                          className={`py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5
-                            ${pideCuenta
-                              ? "bg-yellow-100 text-yellow-700 cursor-not-allowed"
-                              : "bg-slate-900 active:bg-black text-white"
-                            } disabled:opacity-60`}
-                        >
-                          {pidiendoCuenta === mesa.id ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : pideCuenta ? (
-                            <><HandCoins size={13} /> Solicitada</>
-                          ) : (
-                            <><Receipt size={13} /> Cobrar</>
-                          )}
-                        </button>
-                      </div>
+                          <button
+                            disabled={pideCuenta || cargando}
+                            onClick={() => !pideCuenta && setModalCuenta({ mesa, metodo: null })}
+                            className={`py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5
+                              ${pideCuenta
+                                ? "bg-yellow-100 text-yellow-700 cursor-not-allowed"
+                                : "bg-slate-900 active:bg-black text-white"
+                              } disabled:opacity-60`}
+                          >
+                            {pidiendoCuenta === mesa.id ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : pideCuenta ? (
+                              <><HandCoins size={13} /> Solicitada</>
+                            ) : (
+                              <><Receipt size={13} /> Cobrar</>
+                            )}
+                          </button>
+
+                          {/* Botón Unir mesa (solo mesas ocupadas no unidas) */}
+                          <button
+                            onClick={() => setModalUnir(mesa)}
+                            className="col-span-2 py-2.5 rounded-xl border-2 border-slate-100 text-slate-400 font-bold text-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50"
+                          >
+                            <Link2 size={13} /> Unir con otra mesa
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -515,6 +594,89 @@ export default function PanelMozo() {
           )
         )}
       </main>
+
+      {/* ── MODAL UNIR MESAS ─────────────────────────────────── */}
+      {modalUnir && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8 duration-300">
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between border-b border-slate-100">
+              <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
+                <Link2 size={20} className="text-blue-600" />
+                Unir {modalUnir.nombre}
+              </h3>
+              <button
+                onClick={cerrarModalUnir}
+                className="bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors active:scale-95"
+              >
+                <X size={18} className="text-slate-600" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Mesa a incorporar
+                </p>
+                <select
+                  className="w-full border-2 border-slate-200 rounded-xl px-3 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-400 bg-white"
+                  value={mesaBId ?? ""}
+                  onChange={(e) => {
+                    const id = Number(e.target.value);
+                    if (id) cargarPreviewMerge(id, modalUnir.sesionId);
+                    else { setMesaBId(null); setMergePreview(null); }
+                  }}
+                >
+                  <option value="">— Elegir mesa —</option>
+                  {mesas
+                    .filter((m: any) => m.id !== modalUnir.id && !m.esUnida)
+                    .map((m: any) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombre} — {m.ocupada ? `Ocupada ($${m.totalActual})` : "Libre"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {mergePreview && (
+                <div className={`rounded-2xl p-4 text-sm space-y-1 ${
+                  mergePreview.totalPedidos > 0
+                    ? "bg-amber-50 border-2 border-amber-200"
+                    : "bg-green-50 border-2 border-green-200"
+                }`}>
+                  {mergePreview.totalPedidos > 0 ? (
+                    <>
+                      <p className="font-black text-amber-800">
+                        {mesas.find((m: any) => m.id === mesaBId)?.nombre} tiene {mergePreview.totalPedidos} pedido{mergePreview.totalPedidos > 1 ? "s" : ""} (${mergePreview.montoTotal})
+                      </p>
+                      <p className="text-amber-700 text-xs">Al unir, pasan a {modalUnir.nombre}.</p>
+                    </>
+                  ) : (
+                    <p className="font-black text-green-800">Sin pedidos activos — se puede unir directamente.</p>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={ejecutarUnion}
+                disabled={!mesaBId || loadingMerge}
+                className="w-full py-4 rounded-2xl bg-blue-600 text-white font-black text-base transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-200"
+              >
+                {loadingMerge ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <><Link2 size={18} /> Confirmar unión</>
+                )}
+              </button>
+
+              <div className="h-2" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL DETALLE DE MESA ────────────────────────────── */}
       {modalDetalle && (
